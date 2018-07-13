@@ -1,3 +1,5 @@
+from functools import partial
+
 from kivy.app import App
 from kivy.lang import Builder
 from kivy.metrics import dp
@@ -6,6 +8,7 @@ from kivy.uix.image import Image
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.filechooser import FileChooserListView
 from kivy.uix.popup import Popup
+import filebrowser
 
 from kivymd.bottomsheet import MDListBottomSheet, MDGridBottomSheet
 from kivymd.button import MDIconButton
@@ -124,28 +127,40 @@ Screen:
                     Param
                     FileChooserListView:
                         path: './'
+                        on_selection: app.file_select(self.selection,self)
             
 '''
+
+user_path = "C:/Users/jnt11/"
 
 class MainApp(App):
     theme_cls = ThemeManager()
     def load(self, path, selection):
         print(path,  selection)
     def build(self):
-        self.theme_cls.theme_style = 'Dark'
         return Builder.load_string(kv)
-    def file_select(self,selection):
-        print("selected: %s" % selection[0])
+    def file_select(self,selection,f):
+        print("selected: %s" % selection)
     def open_dialog(self):
-        fc = FileChooserListView(path="./",on_selection=self.file_select)
-        b = MDRaisedButton(text="Dismiss")
+        fc = FileChooserListView(path="./")
+        fb = filebrowser.FileBrowser(select_string='Select',
+                                  favorites=[(user_path, 'Documents')])
+        tf = MDTextField(hint_text="wink wink")
         bl = BoxLayout(orientation = 'vertical')
-        bl.add_widget(fc)
-        bl.add_widget(MDTextField(hint_text="wink wink"))
-        bl.add_widget(b)
-        pu = Popup(title='Test popup',content=bl,size_hint=(None, None), size=(400, 400),auto_dismiss=False)
-        b.bind(on_release=pu.dismiss)
+        bl.add_widget(fb)
+        bl.add_widget(tf)
+        pu = Popup(id='file_chooser_dialog',title='Test popup',content=bl,size_hint=(None, None), size=(800, 500),auto_dismiss=False)
+        fb.bind(on_success=self._fbrowser_success,
+                         on_canceled=pu.dismiss,
+                         on_submit=self._fbrowser_submit)
         pu.open()
+    def _fbrowser_canceled(self, instance):
+        print('cancelled, Close self.')
 
+    def _fbrowser_success(self, instance):
+        print(instance.selection)
+
+    def _fbrowser_submit(self, instance):
+        print(instance.selection)
 if __name__ == '__main__':
     MainApp().run()
