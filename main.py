@@ -4,6 +4,8 @@ from kivy.metrics import dp
 from kivy.properties import ObjectProperty
 from kivy.uix.image import Image
 from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.filechooser import FileChooserListView
+from kivy.uix.popup import Popup
 
 from kivymd.bottomsheet import MDListBottomSheet, MDGridBottomSheet
 from kivymd.button import MDIconButton
@@ -17,7 +19,8 @@ from kivymd.selectioncontrols import MDCheckbox
 from kivymd.snackbar import Snackbar
 from kivymd.theming import ThemeManager
 from kivymd.time_picker import MDTimePicker
-
+from kivymd.textfields import MDTextField
+from kivymd.button import MDRaisedButton
 kv = '''
 #:import Toolbar kivymd.toolbar.Toolbar
 #:import ThemeManager kivymd.theming.ThemeManager
@@ -54,11 +57,7 @@ kv = '''
 #:import MDBottomNavigation kivymd.tabs.MDBottomNavigation
 #:import MDBottomNavigationItem kivymd.tabs.MDBottomNavigationItem
 
-<MyWidget@MDDialog>:
-    id: my_widget
-    FileChooserListView:
-        id: filechooser
-        on_selection: my_widget.selected(filechooser.selection)
+
 
 <Param@BoxLayout>:
     orientation: 'horizontal'
@@ -70,8 +69,7 @@ kv = '''
     MDIconButton:
         icon: 'file'
         pos_hint: {'center_x': 0.25, 'center_y': 0.8}
-        on_release: app.dialog = my_widget
-        app.dialog.open()
+        on_release: app.open_dialog()
         
 
 <OptionalParam@BoxLayout>:
@@ -124,19 +122,30 @@ Screen:
                 anchor_y: 'center'
                 ParameterTemplate:
                     Param
-                    MyWidget
+                    FileChooserListView:
+                        path: './'
             
 '''
-class MyWidget(BoxLayout):
-    def open(self, path, filename):
-        print(path)
-    def selected(self, filename):
-        print("selected: %s" % filename[0])
 
 class MainApp(App):
     theme_cls = ThemeManager()
+    def load(self, path, selection):
+        print(path,  selection)
     def build(self):
+        self.theme_cls.theme_style = 'Dark'
         return Builder.load_string(kv)
+    def file_select(self,selection):
+        print("selected: %s" % selection[0])
+    def open_dialog(self):
+        fc = FileChooserListView(path="./",on_selection=self.file_select)
+        b = MDRaisedButton(text="Dismiss")
+        bl = BoxLayout(orientation = 'vertical')
+        bl.add_widget(fc)
+        bl.add_widget(MDTextField(hint_text="wink wink"))
+        bl.add_widget(b)
+        pu = Popup(title='Test popup',content=bl,size_hint=(None, None), size=(400, 400),auto_dismiss=False)
+        b.bind(on_release=pu.dismiss)
+        pu.open()
 
 if __name__ == '__main__':
     MainApp().run()
