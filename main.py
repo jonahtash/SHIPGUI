@@ -1,29 +1,22 @@
 from functools import partial
+import io
+import sys
+import time
+from os.path import expanduser
 
 from kivy.app import App
 from kivy.lang import Builder
 from kivy.metrics import dp
 from kivy.properties import ObjectProperty
-from kivy.uix.image import Image
 from kivy.uix.boxlayout import BoxLayout
-from kivy.uix.filechooser import FileChooserListView
 from kivy.uix.popup import Popup
+from kivy.uix.textinput import TextInput
 import filebrowser
 
-from kivymd.bottomsheet import MDListBottomSheet, MDGridBottomSheet
 from kivymd.button import MDIconButton
-from kivymd.date_picker import MDDatePicker
-from kivymd.dialog import MDDialog
 from kivymd.label import MDLabel
-from kivymd.list import ILeftBody, ILeftBodyTouch, IRightBodyTouch, BaseListItem
-from kivymd.material_resources import DEVICE_TYPE
-from kivymd.navigationdrawer import MDNavigationDrawer, NavigationDrawerHeaderBase
-from kivymd.selectioncontrols import MDCheckbox
-from kivymd.snackbar import Snackbar
 from kivymd.theming import ThemeManager
-from kivymd.time_picker import MDTimePicker
 from kivymd.textfields import MDTextField
-from kivymd.button import MDRaisedButton
 kv = '''
 #:import Toolbar kivymd.toolbar.Toolbar
 #:import ThemeManager kivymd.theming.ThemeManager
@@ -60,19 +53,22 @@ kv = '''
 #:import MDBottomNavigation kivymd.tabs.MDBottomNavigation
 #:import MDBottomNavigationItem kivymd.tabs.MDBottomNavigationItem
 
+<StdoutBox@TextInput>
+    readonly: True
 
 
-<Param@BoxLayout>:
+<FileParam@BoxLayout>:
     orientation: 'horizontal'
     spacing: 30
     MDTextField:
+        id: param
         line_width: root.minimum_width-dp(36)
         pos_hint:    {'center_x': 0.75, 'center_y': 0.5}
         hint_text: "Parameter"
     MDIconButton:
         icon: 'file'
-        pos_hint: {'center_x': 0.25, 'center_y': 0.8}
-        on_release: app.open_dialog()
+        pos_hint: {'center_x': 0.75, 'center_y': 0.5}
+        on_release: root.open_dialog(param)
         
 
 <OptionalParam@BoxLayout>:
@@ -97,15 +93,15 @@ kv = '''
     spacing: 10
         
 Screen:
+    id: main
     name: 'tabs'
     MDTabbedPanel:
         id: tab_panel
         tab_display_mode:'text'
 
         MDTab:
-            name: 'music'
-            text: "Music" # Why are these not set!!!
-            icon: "playlist-play"
+            name: 'txts'
+            text: "Id List Generation" # Why are these not set!!!
 
             AnchorLayout:
                 anchor_x: 'center'
@@ -113,54 +109,85 @@ Screen:
                 ParameterTemplate:
                     OptionalParam:
                     OptionalParam:
-                    Param
+                    FileParam:
+                    StdoutBox:
+                        id: out
+                    MDIconButton:
+                        icon: 'file'
+                        pos_hint: {'center_x': 0.75, 'center_y': 0.5}
+                        on_release: app.ship.print_foo()
+                    MDIconButton:
+                        icon: 'file'
+                        pos_hint: {'center_x': 0.75, 'center_y': 0.5}
+                        on_release: out.write()
 
         MDTab:
-            name: 'movies'
-            text: 'Movies'
+            name: 'pmc'
+            text: 'Fetch from PMC'
             icon: "movie"
 
             AnchorLayout:
                 anchor_x: 'center'
                 anchor_y: 'center'
                 ParameterTemplate:
-                    Param
-                    FileChooserListView:
-                        path: './'
-                        on_selection: app.file_select(self.selection,self)
             
 '''
 
-user_path = "C:/Users/jnt11/"
+user_path = expanduser("~")
 
-class MainApp(App):
-    theme_cls = ThemeManager()
-    def load(self, path, selection):
-        print(path,  selection)
-    def build(self):
-        return Builder.load_string(kv)
-    def file_select(self,selection,f):
-        print("selected: %s" % selection)
-    def open_dialog(self):
-        fc = FileChooserListView(path="./")
+class FileParam(BoxLayout):
+    def open_dialog(self,textfield):
         fb = filebrowser.FileBrowser(select_string='Select',
                                   favorites=[(user_path, 'Documents')])
-        tf = MDTextField(hint_text="wink wink")
         bl = BoxLayout(orientation = 'vertical')
         bl.add_widget(fb)
-        bl.add_widget(tf)
-        pu = Popup(id='file_chooser_dialog',title='Test popup',content=bl,size_hint=(None, None), size=(800, 500),auto_dismiss=False)
-        fb.bind(on_success=self._fbrowser_success,
+        pu = Popup(id='file_chooser_dialog',title='File Selection',content=bl,size_hint=(None, None), size=(800, 500),auto_dismiss=False)
+        fb.bind(on_success=partial(self._fbrowser_success, textfield, pu),
                          on_canceled=pu.dismiss,
-                         on_submit=self._fbrowser_submit)
+                         on_submit=partial(self._fbrowser_submit, textfield, pu))
         pu.open()
     def _fbrowser_canceled(self, instance):
-        print('cancelled, Close self.')
+        print('placeholder func ||-//')
 
-    def _fbrowser_success(self, instance):
-        print(instance.selection)
+    def _fbrowser_success(self, field, pup, instance):
+        if len(instance.selection)>0:
+            field.text =instance.selection[0]
+        else:
+            field.text = instance.path
+        pup.dismiss()
 
-    def _fbrowser_submit(self, instance):
-        print(instance.selection)
+    def _fbrowser_submit(self, field, pup,instance):
+        self._fbrowser_success(field, pup, instance)
+
+class StdoutBox(TextInput):
+    def build(self):
+        self.bind(readonly = True)
+    def write(self):
+        global text_area
+        text_area = self
+        write_to_area()
+
+
+f = io.StringIO()
+text_area = None
+def write_to_area():
+    global f
+    text_area.text = text_area.text + f.getvalue()
+    f.truncate(0)
+    f.seek(0)
+
+
+class MainApp(App):
+    ship = __import__("SHIP")
+
+    theme_cls = ThemeManager()
+
+    def build(self):
+        sys.stdout = f
+        return Builder.load_string(kv)
+
+    
 if __name__ == '__main__':
     MainApp().run()
+    sys.stdout = sys.__stdout__
+    print(f.getvalue())
