@@ -5,6 +5,8 @@ import time
 from os.path import expanduser
 from inspect import getmembers, isfunction, getargspec
 from importlib import import_module
+from multiprocessing import freeze_support
+
 from kivy.app import App
 from kivy.lang import Builder
 from kivy.metrics import dp
@@ -34,6 +36,7 @@ kv = '''
 
 
 <StdoutBox@TextInput>
+    height: 800
     readonly: True
 
 
@@ -119,6 +122,7 @@ Screen:
                             line_width: control_py.minimum_width-dp(36)
                             pos_hint:    {'center_x': 0.75, 'center_y': 0.5}
                             hint_text: "Program Control File Location"
+                            text: "SHIP.py"
                         MDIconButton:
                             icon: 'file'
                             pos_hint: {'center_x': 0.75, 'center_y': 0.5}
@@ -136,8 +140,9 @@ Screen:
                         spacing: 30
                         id: funcs_select
                         MDTextField:
-                            id: textf
+                            id: func_field
                             line_width: funcs_select.minimum_width-dp(36)
+                            hint_text: "Function"
                             pos_hint:    {'center_x': 0.75, 'center_y': 0.5}
                         MDRaisedButton:
                             text: "SELECT"
@@ -145,8 +150,32 @@ Screen:
                             size_hint: None, None
                             size: 4 * dp(48), dp(48)
                             pos_hint:    {'center_x': 0.75, 'center_y': 0.5}
-                            on_release: app.open_menu(textf)
-                    FileParam:
+                            on_release: app.open_menu(func_field)
+                    BoxLayout:
+                        orientation: 'horizontal'
+                        spacing: 30
+                        id: cntrl_select
+                        MDTextField:
+                            id: cntrl_path
+                            hint_text: "Parameter Control File Location"
+                            line_width: funcs_select.minimum_width-dp(36)
+                            pos_hint:    {'center_x': 0.75, 'center_y': 0.5}
+                            text: "cntrl.txt"
+                        MDIconButton:
+                            icon: 'file'
+                            pos_hint: {'center_x': 0.75, 'center_y': 0.5}
+                            on_release: app.open_dialog(cntrl_path)
+                        MDRaisedButton:
+                            text: "RUN"
+                            opposite_colors: True
+                            size_hint: None, None
+                            size: 4 * dp(48), dp(48)
+                            pos_hint:    {'center_x': 0.75, 'center_y': 0.5}
+                            on_release: app.run_param(cntrl_path.text,func_field,outbox)
+                    StdoutBox:
+                        id: outbox
+                        
+                    
                     
                     
 
@@ -182,7 +211,8 @@ class FileParam(BoxLayout):
 
 class StdoutBox(TextInput):
     def build(self):
-        self.bind(readonly = True)
+        global text_area
+        text_area = self
     def write(self):
         global text_area
         text_area = self
@@ -199,14 +229,17 @@ def write_to_area():
 
 
 class MainApp(App):
-    cnrtl_mod = import_module("numpy")
+    cnrtl_mod = import_module("SHIP")
+    cnrtl_funcs = [o for o in getmembers(cnrtl_mod) if isfunction(o[1])]
+    theme_cls = ThemeManager()
     def set_mod(self,mod_path):
         path_a = mod_path.split('\\')
         sys.path.insert(0, path_a[:-1])
         self.cnrtl_mod =  import_module(path_a[-1].split('.')[0])
+        self.cnrtl_funcs = [o for o in getmembers(self.cnrtl_mod) if isfunction(o[1])]
     def open_dialog(self,textfield):
         fb = filebrowser.FileBrowser(select_string='Select',
-                                  favorites=[(user_path, 'Documents')])
+                                  favorites=[(user_path, 'Documents')],path=".")
         bl = BoxLayout(orientation = 'vertical')
         bl.add_widget(fb)
         pu = Popup(id='file_chooser_dialog',title='File Selection',content=bl,size_hint=(None, None), size=(800, 500),auto_dismiss=False)
@@ -226,27 +259,46 @@ class MainApp(App):
 
     def _fbrowser_submit(self, field, pup,instance):
         self._fbrowser_success(field, pup, instance)
-    theme_cls = ThemeManager()
+        
     def write_to_field(self,a,b,tf,text):
         a.text =b
         tf.parent.parent.parent.parent.parent.dismiss()
+        
     def open_menu(self,tf):
         menu_list = MDList(id = 'reee')
         sv= ScrollView()
         sv.add_widget(menu_list)
-        for func in [o for o in getmembers(self.cnrtl_mod) if isfunction(o[1])]:
+        for func in self.cnrtl_funcs:
             func_string = func[0]+'('+', '.join(getargspec(func[1]).args)+')'
             menu_list.add_widget(OneLineListItem(text=func_string,on_touch_down=partial(self.write_to_field, tf,func_string)))
             
         pu = Popup(id='funcs',title='Function Selector',title_color=[255, 255, 255, 1],content=sv,size_hint=(None, None), size=(800, 500),auto_dismiss=False,background="back.png",)
         pu.open()
-
+    def func_wrapper(self,function, args):
+        return function(*args)
+    def run_param(self,cntrl_path,tf,ti):
+        func_name = tf.text.split('(')[0]
+        func = [o[1] for o in self.cnrtl_funcs if func_name==o[0]][0]
+        params = getargspec(func).args
+        run_params = [None] * len(params)
+        c=0
+        for p in open(cntrl_path,'r'):
+            if(c<len(params)):
+                run_params[c] = p.split(': ')[1].strip().replace("'",'')
+                c+=1
+            else:
+                break
+        print(self.func_wrapper(func,run_params))
+        ti.write()
+        
+    
     def build(self):
         sys.stdout = f
         return Builder.load_string(kv)
 
     
 if __name__ == '__main__':
+    freeze_support()
     MainApp().run()
     sys.stdout = sys.__stdout__
     print(f.getvalue())
