@@ -1,13 +1,15 @@
 import os
-from multiprocessing import Pool
+from multiprocessing import Pool as PoolMP
+from multiprocessing.dummy import Pool
+from multiprocessing import freeze_support
 from datetime import datetime
 import subprocess
 import csv
 import urllib.request
-from pdfminer.pdfinterp import PDFResourceManager, PDFPageInterpreter
+"""from pdfminer.pdfinterp import PDFResourceManager, PDFPageInterpreter
 from pdfminer.converter import TextConverter
 from pdfminer.layout import LAParams
-from pdfminer.pdfpage import PDFPage
+from pdfminer.pdfpage import PDFPage"""
 from io import StringIO
 import unicodedata
 import ctypes
@@ -20,11 +22,12 @@ from bs4 import BeautifulSoup
 import pandas as pd
 import shutil
 
+
 """BEGIN RUBY pudmebid2pdf INTERACTION FUNCTIONS"""
 """*********************************************"""
 
 #func to process id in ruby script
-def process_line(line):
+def _process_line(line):
     #output PubMed id of document being run through ruby script
     print(line.strip())
     #pass id to ruby script and save output in buffer
@@ -49,10 +52,32 @@ def run_id_ruby(file_path,kickback_path,num_threads=10):
     pool = Pool(num_threads)
 
     #use Pool.map to have the worker pool take ids in chunks from txt
-    #and run them though ruby script using the process_line function
+    #and run them though ruby script using the _process_line function
     #results will be failed with the ids that failed to dl
     with open(file_path) as source_file:
-        results = pool.map(process_line, source_file)
+        results = pool.map(_process_line, source_file)
+
+    #write the list of failed ids to file
+    with open(kickback_path,'w') as f:
+        for i in results:
+            f.write(i)
+    return datetime.now()-start
+
+#run ruby script on list of ids at file_path and output failed ids
+#to kickback_loc. Optional num_threads number of threads to run- default 10
+def run_id_ruby_mp(file_path,kickback_path,num_threads=10):
+    #record start time to calculate total runtime later
+    start = datetime.now()
+
+    #init pool of workers from specified number
+    #this is how many downloads will run in parallel
+    pool = PoolMP(num_threads)
+
+    #use Pool.map to have the worker pool take ids in chunks from txt
+    #and run them though ruby script using the _process_line function
+    #results will be failed with the ids that failed to dl
+    with open(file_path) as source_file:
+        results = pool.map(_process_line, source_file)
 
     #write the list of failed ids to file
     with open(kickback_path,'w') as f:
@@ -69,7 +94,7 @@ def run_id_ruby(file_path,kickback_path,num_threads=10):
 """***************************"""
 
 #func to process ids to if the from inacessable db liebert
-def process_liebert(line):
+def _process_liebert(line):
     try:
         #build request
         headers = {}
@@ -101,22 +126,22 @@ def process_liebert(line):
 #id_txt path to txt with list of ids to b split
 #out_txt output path of article ids that are located on liebert site
 #not_out_txt output path of article ids that are not located on liebert site
-def get_liebert(id_txt,out_txt, not_out_txt,num_threads=10):
+def _get_liebert(id_txt,out_txt, not_out_txt,num_threads=10):
     pool = Pool(num_threads)
 
     #same Pool.map to map liebert process function to an input list of PubMed ids
     results = []
     with open(id_txt) as source_file:
-        results = pool.map(process_liebert, source_file)
+        results = pool.map(_process_liebert, source_file)
     #write the list of failed ids to file
     with open(out_txt,'w') as f:
         for i in results:
             f.write(i)
-    txt_diff(id_txt,out_txt,not_out_txt)
+    _txt_diff(id_txt,out_txt,not_out_txt)
 
 #func to process urls for url domain sorting function
 #line is PubMed id
-def sort_url_process(line):
+def _sort_url_process(line):
     try:
         #build request
         headers = {}
@@ -147,13 +172,26 @@ def sort_url(id_txt,out_csv,num_threads=10):
     #and run them though ruby script using the process_line function
     #results will be failed with the ids that failed to dl
     with open(id_txt) as source_file:
-        results = pool.map(sort_url_process, source_file)
+        results = pool.map(_sort_url_process, source_file)
 
     #write the list of failed ids to file
     f = csv.writer(open(out_csv,'w'),lineterminator="\n")
     for i in results:
         f.writerow(i.split("||"))
 
+def sort_url_mp(id_txt,out_csv,num_threads=10):
+    pool = PoolMP(num_threads)
+
+    #use Pool.map to have the worker pool take ids in chunks from txt
+    #and run them though ruby script using the process_line function
+    #results will be failed with the ids that failed to dl
+    with open(id_txt) as source_file:
+        results = pool.map(_sort_url_process, source_file)
+    pool.close()
+    #write the list of failed ids to file
+    f = csv.writer(open(out_csv,'w'),lineterminator="\n")
+    for i in results:
+        f.writerow(i.split("||"))
 
 def count_domain(in_csv,out_csv):
     domains = {}
@@ -166,28 +204,28 @@ def count_domain(in_csv,out_csv):
     for k in domains.keys():
         w.writerow([k,domains[k]])
 
-def get_ox_paywall(id_txt,out_txt,num_threads=10):
+def _get_ox_paywall(id_txt,out_txt,num_threads=10):
     pool = Pool(num_threads)
 
     #use Pool.map to have the worker pool take ids in chunks from txt
     #and run them though ruby script using the process_line function
     #results will be failed with the ids that failed to dl
     with open(id_txt) as source_file:
-        results = pool.map(get_ox_paywall_process, source_file)
+        results = pool.map(_get_ox_paywall_process, source_file)
 
     #write the list of failed ids to file
     f =open(out_txt,'w')
     for i in results:
         f.write(i)
 
-def get_ox_txt(in_csv,out_txt):
+def _get_ox_txt(in_csv,out_txt):
     out = open(out_txt,'a')
     for row in csv.reader(open(in_csv,'r')):
         if row[0]=="academic.oup.com":
             out.write(row[1]+"\n")
     out.close()
 
-def get_ox_paywall_process(line):
+def _get_ox_paywall_process(line):
     headers = {}
     headers['User-Agent'] = "Mozilla/5.0 (X11; Linux i686) AppleWebKit/537.17 (KHTML, like Gecko) Chrome/24.0.1312.27 Safari/537.17"
     url = "http://eutils.ncbi.nlm.nih.gov/entrez/eutils/elink.fcgi?dbfrom=pubmed&id="+line.strip()+"&retmode=ref&cmd=prlinks"
@@ -211,7 +249,7 @@ def get_ox_paywall_process(line):
 #Download pdf at download_url from PMC website.
 #Save pdf to folder at pdf_output_dir and name pdf pmed_id.
 #Output failed downloads to kickback_path txt.
-def download_pdf_fromid(download_url,pmed_id,pdf_output_dir,kickback_path):
+def _download_pdf_fromid(download_url,pmed_id,pdf_output_dir,kickback_path):
     kick = open(kickback_path,'a')
     try:
         #assemble http request. PMC is sus if you don't have User-Agent header
@@ -233,35 +271,46 @@ def download_pdf_fromid(download_url,pmed_id,pdf_output_dir,kickback_path):
 #Download pdfs of entries in txt at id_file_path.
 #Downloads pdfs to pdf_output_dir.
 #Output failed downloads to kickback_path.
-def get_from_pmcid(id_file_path,pdf_output_dir,kickback_path):
-    pdf_output_dir = clean_path(pdf_output_dir)
+def _get_from_pmcid(id_file_path,pdf_output_dir,kickback_path):
+    pdf_output_dir = _clean_path(pdf_output_dir)
     with open(id_file_path,'r') as f:
         for line in f:
             a = line.split("+")
-            download_pdf_fromid("https://www.ncbi.nlm.nih.gov/pmc/articles/"+a[0]+"/pdf/",
+            _download_pdf_fromid("https://www.ncbi.nlm.nih.gov/pmc/articles/"+a[0]+"/pdf/",
                           a[1].strip(),pdf_output_dir,kickback_path)
             print(a[0]+" "+a[1].strip())
 
 #helper func for threaded dl
-def unpack(s):
+def _unpack(s):
     a = s.split("+")
     print(a[0]+" "+a[1].strip())
-    download_pdf_fromid("https://www.ncbi.nlm.nih.gov/pmc/articles/"+a[0]+"/pdf/",
+    _download_pdf_fromid("https://www.ncbi.nlm.nih.gov/pmc/articles/"+a[0]+"/pdf/",
                         a[1].strip(),a[2],a[3])
 #Get_from_pmcid threaded version.
 #Default 10 threads.
-def get_from_pmcid_thread(id_file_path,pdf_output_dir,kickback_path,num_thread=10):
-    pdf_output_dir = clean_path(pdf_output_dir)
+def get_from_pmcid(id_file_path,pdf_output_dir,kickback_path,num_thread=10):
+    pdf_output_dir = _clean_path(pdf_output_dir)
     pool = Pool(num_thread)
     pack = []
     for line in open(id_file_path,'r'):
         pack.append(line+"+"+pdf_output_dir+"+"+kickback_path)
-    results = pool.map(unpack,pack)
+    results = pool.map(_unpack,pack)
 
-def download_pdf_errors(download_url,pmed_id,pdf_output_dir):
-    e404 = open("Error_404.txt",'a')
-    e403_ban = open("Error_403_ipBan.txt",'a')
-    e403_rem = open("Error_403_rem.txt",'a')
+#Get_from_pmcid threaded version.
+#Default 10 threads.
+def get_from_pmcid_mp(id_file_path,pdf_output_dir,kickback_path,num_thread=10):
+    pdf_output_dir = _clean_path(pdf_output_dir)
+    pool = PoolMP(num_thread)
+    pack = []
+    for line in open(id_file_path,'r'):
+        pack.append(line+"+"+pdf_output_dir+"+"+kickback_path)
+    results = pool.map(_unpack,pack)
+    pool.close()
+
+def _download_pdf_errors(download_url,pmed_id,pdf_output_dir):
+    e404 = open("error_404.txt",'a')
+    e403_ban = open("error_403_ipBan.txt",'a')
+    e403_rem = open("error_403_rem.txt",'a')
     try:
         headers = {}
         headers['User-Agent'] = "Mozilla/5.0 (X11; Linux i686) AppleWebKit/537.17 (KHTML, like Gecko) Chrome/24.0.1312.27 Safari/537.17"
@@ -283,19 +332,28 @@ def download_pdf_errors(download_url,pmed_id,pdf_output_dir):
     e403_ban.close()
     e403_rem.close()
 
-def unpack_error(s):
+def _unpack_error(s):
     a = s.split("+")
     print(a[0]+" "+a[1].strip())
-    download_pdf_errors("https://www.ncbi.nlm.nih.gov/pmc/articles/"+a[0]+"/pdf/",
+    _download_pdf_errors("https://www.ncbi.nlm.nih.gov/pmc/articles/"+a[0]+"/pdf/",
                         a[1].strip(),a[2])
 
-def get_error_thread(id_file_path,pdf_output_dir,num_thread=2):
-    pdf_output_dir = clean_path(pdf_output_dir)
+def get_error(id_file_path,pdf_output_dir,num_thread=2):
+    pdf_output_dir = _clean_path(pdf_output_dir)
     pool = Pool(num_thread)
     pack = []
     for line in open(id_file_path,'r'):
         pack.append(line+"+"+pdf_output_dir)
-    results = pool.map(unpack_error,pack)
+    results = pool.map(_unpack_error,pack)
+
+def get_error_mp(id_file_path,pdf_output_dir,num_thread=2):
+    pdf_output_dir = _clean_path(pdf_output_dir)
+    pool = PoolMP(num_thread)
+    pack = []
+    for line in open(id_file_path,'r'):
+        pack.append(line+"+"+pdf_output_dir)
+    results = pool.map(_unpack_error,pack)
+    pool.close()
     
 """*************************"""
 """END PMC DOWLOAD FUNCTIONS"""
@@ -303,47 +361,58 @@ def get_error_thread(id_file_path,pdf_output_dir,num_thread=2):
 
 """BEGIN MATERIALS SECTION PARSER FUNCTIONS"""
 """****************************************"""
-def extract_materials_section(pdf_path,output_path,sec_header_good,sec_header_bad):
+def _extract_materials_section(pdf_path,output_path,sec_header_good,sec_header_bad):
     f = open(output_path, "w")
-    text= convert_pdf_to_txt(pdf_path)
+    text= _convert_pdf_to_txt(pdf_path)
     lineiterator = iter(text.splitlines())
     for line in lineiterator:
         if len(unicodedata.normalize("NFD",line.casefold()).replace("  "," ").strip()) > 0:
-            if any_rev(sec_header_good,unicodedata.normalize("NFD",line.casefold()).replace("  "," ")):
-                print(line+"******************")
+            if _any_rev(sec_header_good,unicodedata.normalize("NFD",line.casefold()).replace("  "," ")):
+                #print(line+"******************")
                 print(next(lineiterator))
                 for i in range(1000):
                     l = next(lineiterator)
                     print(l)
-                    if not any_rev(sec_header_bad,unicodedata.normalize("NFD",l.casefold()).replace("  "," ")):
+                    if not _ny_rev(sec_header_bad,unicodedata.normalize("NFD",l.casefold()).replace("  "," ")):
                         f.write(l+"\n")
                     else:  
                         break
                 break
     f.close()
 
-def get_materials_folder(pdf_dir,output_dir,sec_header_good,sec_header_bad):
-    pdf_dir = clean_path(pdf_dir)
-    output_dir = clean_path(output_dir)
+def _get_materials_folder(pdf_dir,output_dir,sec_header_good,sec_header_bad):
+    pdf_dir = _clean_path(pdf_dir)
+    output_dir = _clean_path(output_dir)
     for f in os.listdir(pdf_dir):
         if f.endswith(".pdf"):
             print(pdf_dir+f)
-            extract_materials_section(pdf_dir+f,output_dir+f.split(".pdf")[0]+".txt",sec_header_good,sec_header_bad)
+            _extract_materials_section(pdf_dir+f,output_dir+f.split(".pdf")[0]+".txt",sec_header_good,sec_header_bad)
 
-def unpack_pdfextract(s):
+def _unpack_pdfextract(s):
     a = s.split(",")
     print(a[0])
     extract_materials_section(a[0],a[1],a[2].split('$'),a[3].split('$'))
 
-def get_materials_folder_thread(pdf_dir,output_dir,sec_header_good,sec_header_bad,num_threads=10):
-    pdf_dir = clean_path(pdf_dir)
-    output_dir = clean_path(output_dir)
+def get_materials_folder(pdf_dir,output_dir,sec_header_good,sec_header_bad,num_threads=10):
+    pdf_dir = _clean_path(pdf_dir)
+    output_dir = _clean_path(output_dir)
     pool = Pool(num_threads)
     pack = []
     for f in os.listdir(pdf_dir):
         if f.endswith(".pdf"):
             pack.append(pdf_dir+f+","+output_dir+f.split(".pdf")[0]+".txt,"+'$'.join(sec_header_good)+","+'$'.join(sec_header_bad))
-    results = pool.map(unpack_pdfextract, pack,4)
+    results = pool.map(_unpack_pdfextract, pack,4)
+
+def get_materials_folder_mp(pdf_dir,output_dir,sec_header_good,sec_header_bad,num_threads=10):
+    pdf_dir = _clean_path(pdf_dir)
+    output_dir = _clean_path(output_dir)
+    pool = PoolMP(num_threads)
+    pack = []
+    for f in os.listdir(pdf_dir):
+        if f.endswith(".pdf"):
+            pack.append(pdf_dir+f+","+output_dir+f.split(".pdf")[0]+".txt,"+'$'.join(sec_header_good)+","+'$'.join(sec_header_bad))
+    results = pool.map(_unpack_pdfextract, pack,4)
+    pool.close()
 
 """**************************************"""
 """END MATERIALS SECTION PARSER FUNCTIONS"""
@@ -352,7 +421,7 @@ def get_materials_folder_thread(pdf_dir,output_dir,sec_header_good,sec_header_ba
 """BEGIN SCIENCE-PARSE SERVER FUNCTIONS"""
 """*****************************"""
 
-def post_science_parse(s):
+def _post_science_parse(s):
     a=s.split("+")
     print(a[0])
     try:
@@ -363,13 +432,23 @@ def post_science_parse(s):
         print("ERROR "+str(e))
 
 def get_pdf_json(pdf_dir,out_dir,num_thread=2):
-    pdf_dir = clean_path(pdf_dir)
-    out_dir = clean_path(out_dir)
+    pdf_dir = _clean_path(pdf_dir)
+    out_dir = _clean_path(out_dir)
     pool = Pool(num_thread)
     pack = []
     for line in os.listdir(pdf_dir):
         pack.append(pdf_dir+line+"+"+out_dir)
-    results = pool.map(post_science_parse,pack)
+    results = pool.map(_post_science_parse,pack)
+
+def get_pdf_json_mp(pdf_dir,out_dir,num_thread=2):
+    pdf_dir = _clean_path(pdf_dir)
+    out_dir = _clean_path(out_dir)
+    pool = PoolMP(num_thread)
+    pack = []
+    for line in os.listdir(pdf_dir):
+        pack.append(pdf_dir+line+"+"+out_dir)
+    results = pool.map(_post_science_parse,pack)
+    pool.close()
 
 """***************************"""
 """END SCIENCE-PARSE SERVER FUNCTIONS"""
@@ -379,7 +458,7 @@ def get_pdf_json(pdf_dir,out_dir,num_thread=2):
 """****************************"""
 
 def run_json_folder(json_path,exclude_path,char_path,bkup_csv_path,csv_out_path):
-	json_path = clean_path(json_path)
+	json_path = _clean_path(json_path)
 
 	#init sqlite db in memory
 	#sql db structure:
@@ -397,22 +476,22 @@ def run_json_folder(json_path,exclude_path,char_path,bkup_csv_path,csv_out_path)
 		c=1
 		#add title and author entry to table
 		if f['metadata']['title']:
-			cur.execute("INSERT INTO temp_table VALUES (?, ?, ?, ?, 1, 0, 0, 0, 0)", ('title', clean_sql(f['metadata']['title']),file_path.split('/')[-1].split('.pdf.json')[0],c))
+			cur.execute("INSERT INTO temp_table VALUES (?, ?, ?, ?, 1, 0, 0, 0, 0)", ('title', _clean_sql(f['metadata']['title']),file_path.split('/')[-1].split('.pdf.json')[0],c))
 			c+= 1
 		if f['metadata']['authors']:
-			cur.execute("INSERT INTO temp_table VALUES (?, ?, ?, ?, 1, 0, 0, 0, 0)", ('authors', clean_sql(str(f['metadata']['authors'])),file_path.split('/')[-1].split('.pdf.json')[0],c))
+			cur.execute("INSERT INTO temp_table VALUES (?, ?, ?, ?, 1, 0, 0, 0, 0)", ('authors', _clean_sql(str(f['metadata']['authors'])),file_path.split('/')[-1].split('.pdf.json')[0],c))
 			c+= 1
 
 		if f['metadata']['sections']:
 			for sec in f['metadata']['sections']:
-				text_clean = clean_sql(sec['text']).replace("N IH -PA Author M anuscript\n",'').replace("N IH -PA Author M anuscript",'')
+				text_clean = _clean_sql(sec['text']).replace("N IH -PA Author M anuscript\n",'').replace("N IH -PA Author M anuscript",'')
 				heading_clean = ""
 				if sec['heading']:
-					heading_clean = clean_sql(sec['heading'])
+					heading_clean = _clean_sql(sec['heading'])
 				else:
 					heading_clean = "null"
 				cmd = "INSERT INTO temp_table VALUES (?, ?, ?, ?, ?, ?, ?, ? ,? )"
-				cur.execute(cmd, (heading_clean, text_clean,file_path.split('/')[-1].split('.pdf.json')[0],c,1,0,upper_ratio(text_clean),digit_ratio(text_clean),special_ratio(text_clean)))
+				cur.execute(cmd, (heading_clean, text_clean,file_path.split('/')[-1].split('.pdf.json')[0],c,1,0,_upper_ratio(text_clean),_digit_ratio(text_clean),_special_ratio(text_clean)))
 				c+= 1
 
 
@@ -453,7 +532,7 @@ def run_json_folder(json_path,exclude_path,char_path,bkup_csv_path,csv_out_path)
 		for s in [e+". " for e in row[1].split(". ") if e]:
 			#insert chunk of text into table
 			if len(bs + s) > int(split_on):  
-				cur.execute("INSERT INTO temp_table VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",(row[0],bs,str(row[2]),row[3],c_split,row[5],upper_ratio(bs),digit_ratio(bs),special_ratio(bs)))
+				cur.execute("INSERT INTO temp_table VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",(row[0],bs,str(row[2]),row[3],c_split,row[5],_upper_ratio(bs),_digit_ratio(bs),_special_ratio(bs)))
 				c_split+= 1
 				bs = s
 			else:
@@ -546,7 +625,7 @@ def partition_jsons(json_dir,partition_dir,json_per_folder):
 
 def run_partition_folders(part_folder_dir,out_csv_dir,exclude_path,char_path,limit=-1):
     c = 0
-    out_csv_dir = clean_path(out_csv_dir)
+    out_csv_dir = _clean_path(out_csv_dir)
     for f in os.listdir(part_folder_dir):
         folder = os.path.join(part_folder_dir, f)
         print(folder)
@@ -618,7 +697,7 @@ def count_heads(csv_file_path):
 
 #Removes duplicate lines in txt file located at in_path
 #Outputs to out_path
-def remove_dupes_txt(in_path, out_path):
+def _remove_dupes_txt(in_path, out_path):
     lines_seen = set()
     outfile = open(out_path, "w")
     for line in open(in_path, "r"):
@@ -638,13 +717,13 @@ def get_count(id_txt_list, pdf_dir_list):
         c+=len(os.listdir(d))
     return c
 
-def any_rev(array,string):
+def _any_rev(array,string):
     for i in array:
         if i in string:
             return True
     return False
 
-def convert_pdf_to_txt(path):
+def _convert_pdf_to_txt(path):
     rsrcmgr = PDFResourceManager()
     retstr = StringIO()
     codec = 'utf-8'
@@ -673,16 +752,16 @@ def rem_pmcid(in_path,out_path):
             for line in inF:
                 outF.write(line.split('+')[1])
 
-def split_every(n, s):
+def _split_every(n, s):
     return [ s[i:i+n] for i in range(0, len(s), n) ]
 
-def clean_path(path):
+def _clean_path(path):
     if path[-1]!="/":
         return path+"/"
     else:
         return path
 
-def clean_sql(s):
+def _clean_sql(s):
     return ''.join([i if ord(i) < 128 else '' for i in s]).replace("\t",' ').replace("\n",' ').replace("\r"," ")
 
 def get_empty_files(pdf_dir,out_path):
@@ -708,12 +787,12 @@ def sort_nonretrievable(csv_file_path, good_out_path, bad_out_path):
         good_pdf.close()
         bad_pdf.close()
         
-def txt_diff(txt1,txt2,out_txt):
+def _txt_diff(txt1,txt2,out_txt):
     t1 = open(txt1,'r').readlines()
     t2 = open(txt2,'r').readlines()
     open(out_txt,'w').writelines(list(set(t1)-set(t2)))
 
-def upper_ratio(s):
+def _upper_ratio(s):
     if len(s)==0:
         return 0
     u = len(re.findall('[A-Z]',s))
@@ -722,7 +801,7 @@ def upper_ratio(s):
         return 0
     return u/(u+l)
 
-def digit_ratio(s):
+def _digit_ratio(s):
     if len(s)==0:
         return 0
     d = len(re.findall('[0-9]',s))
@@ -731,7 +810,7 @@ def digit_ratio(s):
         return 0
     return d/(c+d)
 
-def special_ratio(s):
+def _special_ratio(s):
     if len(s)==0:
         return 0
     c = len(re.findall('[A-z]',s))
@@ -742,10 +821,9 @@ def special_ratio(s):
 
 """*********************"""
 """END UTILITY FUNCTIONS"""
-def print_foo():
-    for i in range(50):
-        print(str(i)+"foo")
+
 if __name__ == '__main__':
+    freeze_support()
     #run_id_ruby('ids_run_next.txt','kick_third_run.txt',num_threads=7)
     #run_json_folder("C:/Users/jnt11/Documents/SHIPFiles/outJSONsmall",'C:/Users/jnt11/Documents/SHIPFiles/exclude.csv','C:/Users/jnt11/Documents/SHIPFiles/char.csv','bkup.csv','sample_data.csv')
     #partition_jsons("C:/Users/jnt11/Documents/SHIPFiles/outJSONsmall","C:/Users/jnt11/Documents/SHIPFiles/testPart",10)
