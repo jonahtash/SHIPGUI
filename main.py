@@ -10,6 +10,7 @@ import strconv
 
 from kivy.app import App
 from kivy.lang import Builder
+from kivy.core.window import Window
 from kivy.metrics import dp
 from kivy.properties import ObjectProperty
 from kivy.uix.boxlayout import BoxLayout
@@ -80,7 +81,6 @@ Screen:
                             line_width: funcs_select.minimum_width-dp(36)
                             hint_text: "Function"
                             pos_hint:    {'center_x': 0.75, 'center_y': 0.5}
-                            text: 'sort_url(id_txt, out_csv, num_threads)'
                         MDRaisedButton:
                             text: "SELECT"
                             opposite_colors: True
@@ -108,7 +108,7 @@ Screen:
                             size_hint: None, None
                             size: 4 * dp(48), dp(48)
                             pos_hint:    {'center_x': 0.75, 'center_y': 0.5}
-                            on_release: app.run_param(cntrl_path.text,func_field,outbox)
+                            on_release: app.run_param(cntrl_path.text,func_field)
                     BoxLayout:
                         spacing: 30
                         MDCheckbox:
@@ -191,7 +191,7 @@ class MainApp(App):
             set_area(area)
 
     #used to switch module control program
-    #called when new file is chosen for control program
+    #called when new file is chosen for control program (first TextField)
     def set_mod(self,mod_path):
         #add the location of the control program to path so that it can be imported
         path_a = mod_path.text.split('\\')
@@ -211,8 +211,10 @@ class MainApp(App):
             self.dialog.open()
             #when the import fails reset the text in the control file path textfield
             #avoids the confusion of the file selected not importing but the file name appearing in the text field
-            #implying that it is the current control proram 
+            #implying that it is the current control program 
             mod_path.text = ""
+            #reset list of funcs
+            self.cnrtl_funcs = []
 
         
     """BEGIN FILE BROWESER FUNCTIONS"""        
@@ -258,28 +260,53 @@ class MainApp(App):
         a.text =b
         tf.parent.parent.parent.parent.parent.dismiss()
 
-    #opens func selection popup from list of funcs in control program module    
+    #opens func selection popup from list of funcs in control program module
+    #called when "Select" button is pressed
     def open_menu(self,tf):
+        #make KivyMd list
         menu_list = MDList(id = 'func_list')
         sv= ScrollView()
         sv.add_widget(menu_list)
+        #go through funcs in control mod and add names with parameters to list
+        if len(self.cnrtl_funcs)==0:
+            content = MDLabel(font_style='Body1',theme_text_color='Secondary',text="No functions found",size_hint_y=None,valign='top')
+            content.bind(texture_size=content.setter('size'))
+            self.dialog = MDDialog(title="Program Error",content=content,size_hint=(.8, None),height=dp(200),auto_dismiss=False)
+            self.dialog.add_action_button("Close",action=lambda *x: self.dialog.dismiss())
+            self.dialog.open()
+            return
         for func in self.cnrtl_funcs:
+            #check if function is private (name starts with '_' by Python convention)
             if not func[0][0] == '_':
+                #make string "func_name(list,of,params)"
                 func_string = func[0]+'('+', '.join(getargspec(func[1]).args)+')'
+                #make func_string into menu list item and add to menu
                 menu_list.add_widget(OneLineListItem(text=func_string,on_touch_down=partial(self.write_to_field, tf,func_string)))
-            
+        #make and open popup with list    
         pu = Popup(id='funcs',title='Function Selector',title_color=[255, 255, 255, 1],content=sv,size_hint=(None, None), size=(800, 500),auto_dismiss=False,background="res/back.png",)
         pu.open()
 
-        
+    #takes func and args as array and passes them to func using *    
     def func_wrapper(self,function, args):
         return function(*args)
 
-    def run_param(self,cntrl_path,function_text_field,outputbox):
+    #runs func name that is in the function text field
+    #note that this function, run_param, is broken into 3 pieces
+    #this is the result of conditional checks that must be met in order for the function to run properly
+    #these checks are determined by user input in the form of selecting dialogss
+    #cntrl_path is the file path of the txt conatining parameters to be passed
+    #function_text is a reference to the MDTextField that contains function names
+    def run_param(self,cntrl_path,function_text_field):
+        #func_name string that conmes before ( in the function_text_field
         func_name = function_text_field.text.split('(')[0]
+        #get reference to function with name func_name by searching through list of funcs in module
         func = [o[1] for o in self.cnrtl_funcs if func_name==o[0]]
+        #params to be filled with the parameter name within the selected function
         params = []
+        #if a function was found in the list of functions
         if len(func)>0:
+            #variable func is currently a list of 1 elem.
+            #if the function was found set the varible to that elem. (reference to function)
             func = func[0]
             params = getargspec(func).args
         else:
@@ -368,10 +395,14 @@ class MainApp(App):
         self.dialog.open()
 
     def build(self):
+        Window.bind(on_key_down=self.key_action)
         sys.stdout = f
         return Builder.load_string(kv)
-		
-		
+    def key_action(self, *args):
+        if args[1]==13:
+            if self.root.ids["param"].focused:
+                self.set_mod(self.root.ids["param"])
+#strips leading and tailing ' and " chars		
 def strip_quotes(s):
     if len(s)<=1:
         return s
