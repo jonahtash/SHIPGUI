@@ -4,7 +4,7 @@ import sys
 import time
 from os.path import expanduser
 from inspect import getmembers, isfunction, getargspec, signature
-from importlib import import_module
+import importlib
 from multiprocessing import freeze_support
 import strconv
 
@@ -17,6 +17,7 @@ from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.popup import Popup
 from kivy.uix.textinput import TextInput
 from kivy.uix.scrollview import ScrollView
+from kivy.uix.rst import RstDocument
 from kivy.clock import Clock
 import filebrowser
 
@@ -43,7 +44,9 @@ from kivymd.tabs import MDTabbedPanel, MDTab
 # func = function
 # param = parameters
 
+
 kv = '''
+#:import parse_color kivy.parser.parse_color
 
 <StdoutBox@TextInput>
     height: dp(20)
@@ -59,7 +62,7 @@ Screen:
         tab_display_mode:'text'
 
         MDTab:
-            name: 'txts'
+            name: 'control'
             text: "Control Python"
             id: main_tab
 
@@ -142,19 +145,84 @@ Screen:
                             icon: 'file'
                             pos_hint: {'center_x': 0.75, 'center_y': 0.5}
                             on_release: app.open_dialog(log_path)
+                    StdoutBox:
+                        id: outbox
+                        disabled: log_swich.active
+                        background_disabled_normal: 'res/disabled.png'
+                        background_normal: 'res/enabled.png'
+                        font_name: "DejaVuSans" 
+                    
+        MDTab:
+            name: 'help'
+            text: "Help"
+            id: help_tab
+            ScrollView:
+                RstDocument:
+                    underline_color: "0277BD"
+                    base_font_size: 31
+                    text: app.my_help_text
+                    colors: {'background': 'FAFAFA','link': '0D47A1','paragraph': '202020ff','title': '212121','bullet': '000000ff'}
 
-					StdoutBox:
-						id: outbox
-						disabled: log_swich.active
-						background_disabled_normal: 'res/disabled.png'
-						background_normal: 'res/enabled.png'
-						font_name: "DejaVuSans" 
-                    
-                    
 
                     
             
 '''
+
+help_text = '''
+============
+About
+============
+
+What this does
+--------------
+This user interface is designed for the automation of running Python programs via the concept of program control. The basic idea behind this concept is that a user can abstract their interaction with a program via the use of a control file. This control file contains nothing more than values to be sent to the program. This way a user can just select a program, and a control file with input for that program, and then press a button to set that program running. If the user decides to change their program input, they need only change the control file. This user interface provides a visual way for a user to select a Python program, and a control file to pass values to that program. A Python program being a function within a Python module file and the control file being a .txt file listing function parameter names and values to be passed to those parameters.
+
+How to use it
+-------------
+`TL;DR`_ at the bottom.
+
+To run a program using this user interface, the you, the user, must assign a minimum of three key parameters.
+ - The location of a Python module
+ - A function within that module
+ - The location a control file
+
+**What is a Python module?** By definition a Python module is ``"a file containing Python definitions and statements."`` For the purposes of this user interface it is simply a .py file containing function definitions (``def`` statements).
+
+**Selecting a Module** There are two ways to select a Python module using this interface. The first, recommended, method is by pressing the file selection button on the right side of the first text field. That button will open a file browser that you can use to navigate to and select a module. Selecting a module using the file browser will automatically load that module into the interface. The second method to select a module is manually type the path of a module into the first text field and pressing the enter key.
+
+**Selecting a Function** There are two ways to select a function within a selected module using this user interface. These two methods are similar to the two methods of selecting a module. The first, recommended, method is to open the function selection menu by pressing the ``"SELECT"`` button located to the right of the second text field. The menu will list the name and parameter names of every function within the selected module. You can then select the function you want to run from this list. The second method of selecting a function is by manually typing the function name into the second text field (note that you are not required to type parameter names into the text field).
+
+**Wait, where's my function?** As per Python convention any functions whose name starts with the character '_' should be treated as though it is non-public. Consequently functions whose name starts with the character '_' have been filtered out of the function selection menu. Don't worry, you can still run these functions by manually typing their name into the second text field. For info visit `https://docs.python.org/3/tutorial/classes.html#tut-private <https://docs.python.org/3/tutorial/classes.html#tut-private>`_.
+
+**Selecting a Control File** Similar to selecting, you can either select the path to a control file by pressing the file selection button which opens a file browser or by manually typing the path to the control file.
+
+**How to format the Control File** The control file should be a .txt file that lists the parameters of a function, one parameter per line with the parameter followed by ": " and ending with the value to be passed to that parameter. For example take the function ``foobar(in_txt, out_csv).`` The control file for this function would look like this:
+
+``in_txt: path/to/txt/foo.txt``
+
+``out_csv: path/to/csv/bar.csv``
+
+Notes: The inclusion of optional parameters is optional. The name of the parameter that appears before the colon does not have to match the name of a parameter in the function definition, however **ORDER MATTERS!!!** Parameters will be passed to the function in the order the appear, NOT BY PARAMETER NAME!!! (<- just want to reiterate that this is important).
+
+**You're all set!** Press the run button to run the function selected.
+
+**Notes on output:** There are two options for viewing the STDOUT of your function. The first and default option is to write all STDOUT along with what your function returns to a log file. The second option is to direct output to the text area and the bottom of the user interface this option is enabled by disabling the log file checkbox.
+
+.. _TLDR:
+
+TL;DR
+*****************
+
+**Select a Module** Either type the path to a .py in the first text field and press enter or select a file by pressing the file button.
+
+**Select a Function** Either type name of a function in the second  text field  or select a function by pressing the button that says ``"SELECT"``.
+
+**Select a Control File** Either type the path to a .txt control file in the third text field or select a file by pressing the file button.
+
+**Press the RUN button** Press the ``RUN`` button.
+
+'''
+
 # set a variable to the location of the user's home directory. Used to direct file browser
 user_path = expanduser("~")
 # by default output stdout to a file called 'log.txt' sys.stdout is assigned to this file object in MainApp.build
@@ -209,12 +277,15 @@ class TextBoxOut:
 class MainApp(App):
     # the control program
     # default control program: SHIP.py
-    cnrtl_mod = import_module("SHIP")
+    cnrtl_mod = importlib.import_module("SHIP")
     # list of the functions within the control programs
     # stored in tuples of ("func_name_as_string", <ref_to_func>)
     cnrtl_funcs = [o for o in getmembers(cnrtl_mod) if isfunction(o[1])]
     # used for kivy themeing
     theme_cls = ThemeManager()
+    # make help accessable to kv objects
+    global help_text
+    my_help_text = help_text
 
     # on_release event for checkbox controlling output location
     # when the check box is active (checked) std is directed to a log file whose location is given by a text field
@@ -230,12 +301,12 @@ class MainApp(App):
     # used to switch module control program
     # called when new file is chosen for control program (first TextField)
     def set_mod(self,mod_path):
-        # add the location of the control program to path so that it can be imported
         path_a = mod_path.text.split('\\')
-        sys.path.insert(0, path_a[:-1])
-        try:
+        try:  
+            # add path to file selected to sys.path
+            sys.path.append("\\".join(path_a[:-1]))
             # import module and it to cnrtl_mod field
-            self.cnrtl_mod =  import_module(path_a[-1].split('.')[0])
+            self.cnrtl_mod = importlib.import_module(path_a[-1].split('.')[0])
             # reassign list of functions to functions within new module
             self.cnrtl_funcs = [o for o in getmembers(self.cnrtl_mod) if isfunction(o[1])]
         except Exception as e:
