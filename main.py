@@ -19,7 +19,7 @@ from kivy.uix.textinput import TextInput
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.rst import RstDocument
 from kivy.clock import Clock
-import filebrowser
+import kivy.garden.filebrowser as filebrowser
 
 from kivymd.button import MDIconButton, MDRaisedButton
 from kivymd.label import MDLabel
