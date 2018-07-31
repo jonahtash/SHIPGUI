@@ -7,6 +7,7 @@ from inspect import getmembers, isfunction, getargspec, signature
 import importlib
 from multiprocessing import freeze_support
 import strconv
+import threading
 
 from kivy.app import App
 from kivy.lang import Builder
@@ -18,7 +19,7 @@ from kivy.uix.popup import Popup
 from kivy.uix.textinput import TextInput
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.rst import RstDocument
-from kivy.clock import Clock
+from kivy.clock import Clock, mainthread
 import kivy.garden.filebrowser as filebrowser
 
 from kivymd.button import MDIconButton, MDRaisedButton
@@ -29,6 +30,7 @@ from kivymd.list import MDList, OneLineListItem
 from kivymd.dialog import MDDialog
 from kivymd.selectioncontrols import MDSwitch, MDCheckbox
 from kivymd.tabs import MDTabbedPanel, MDTab
+from kivymd.spinner import MDSpinner
 
 # A few notes on the comments in this document;
 # There are a number of variables/parameters that are semantically similar
@@ -42,7 +44,7 @@ from kivymd.tabs import MDTabbedPanel, MDTab
 # mod = module
 # cntrl = control
 # func = function
-# param = parameters
+# param = parameter
 
 
 kv = '''
@@ -82,11 +84,16 @@ Screen:
                             line_width: control_py.minimum_width-dp(36)
                             pos_hint:    {'center_x': 0.75, 'center_y': 0.5}
                             hint_text: "Program Control File Location"
-                            text: "SHIP.py"
                         MDIconButton:
                             icon: 'file'
                             pos_hint: {'center_x': 0.75, 'center_y': 0.5}
                             on_release: app.open_dialog(param)
+                        MDSpinner:
+                            id: mod_spinner
+                            size_hint: None, None
+                            size: dp(46), dp(46)
+                            pos_hint: {'center_x': 0.5, 'center_y': 0.5}
+                            active: False
                         
                     BoxLayout:
                         orientation: 'horizontal'
@@ -104,6 +111,12 @@ Screen:
                             size: 4 * dp(48), dp(48)
                             pos_hint:    {'center_x': 0.75, 'center_y': 0.5}
                             on_release: app.open_menu(func_field)
+                        MDSpinner:
+                            id: sel_spinner
+                            size_hint: None, None
+                            size: dp(46), dp(46)
+                            pos_hint: {'center_x': 0.5, 'center_y': 0.5}
+                            active: False
                     BoxLayout:
                         orientation: 'horizontal'
                         spacing: 30
@@ -125,6 +138,12 @@ Screen:
                             size: 4 * dp(48), dp(48)
                             pos_hint:    {'center_x': 0.75, 'center_y': 0.5}
                             on_release: app.run_param(cntrl_path.text,func_field)
+                        MDSpinner:
+                            id: func_spinner
+                            size_hint: None, None
+                            size: dp(46), dp(46)
+                            pos_hint: {'center_x': 0.5, 'center_y': 0.5}
+                            active: False
                     BoxLayout:
                         spacing: 30
                         MDCheckbox:
@@ -256,6 +275,7 @@ def set_area(text_input):
     f = TextBoxOut(TextInput())
     f.my_text_input = text_input
     sys.stdout = f
+
 """*********************"""
 """END UTILITY FUNCTIONS"""
 
@@ -276,11 +296,13 @@ class TextBoxOut:
 
 class MainApp(App):
     # the control program
-    # default control program: SHIP.py
-    cnrtl_mod = importlib.import_module("SHIP")
+    # default control program: None
+    #cnrtl_mod = importlib.import_module("SHIP")
+    cnrtl_mod = None
     # list of the functions within the control programs
     # stored in tuples of ("func_name_as_string", <ref_to_func>)
-    cnrtl_funcs = [o for o in getmembers(cnrtl_mod) if isfunction(o[1])]
+    #cnrtl_funcs = [o for o in getmembers(cnrtl_mod) if isfunction(o[1])]
+    cnrtl_funcs = []
     # used for kivy themeing
     theme_cls = ThemeManager()
     # make help accessable to kv objects
@@ -400,7 +422,10 @@ class MainApp(App):
 
     # takes func and args as array and passes them to func using *    
     def func_wrapper(self,function, args):
-        return function(*args)
+        ret= function(*args)
+        self.root.ids['func_spinner'].active = False
+        print(ret)
+        return ret
 
     """BEGIN RUN PARAM CHAIN"""
     """*********************"""  
@@ -487,11 +512,13 @@ class MainApp(App):
         
     # final block of run_param
     # assumes all parameter name discrepencies have been solved
+
+    @mainthread
     def __finish_run_param(self,func,run_params,placeholder):
         try:
             # use func_wrapper to pass params to cntrl function as list
             # run the function and print the result
-            print(self.func_wrapper(func,run_params))
+            threading.Thread(target=self.func_wrapper, args=(func,run_params,)).start()
         except Exception as e:
             # if the function throws an error, output the error
             print("Function threw error:\n"+str(e))
@@ -547,6 +574,7 @@ class MainApp(App):
         # bind the schedule to dialog dismiss event
         # this has the app wait .5 sec after the dialog is dismissed to execute the next func in the run_param chain
         self.dialog.bind(on_dismiss=partial(self.__schedule, partial(self.__finish_run_param,func,run_params),.5))
+        self.root.ids['func_spinner'].active = True
         self.dialog.dismiss(force=True,animation=False)
         
     # called when a dialog message is final
@@ -574,7 +602,7 @@ class MainApp(App):
             # if the Control Module textfield is currently foucused
             if self.root.ids["param"].focused:
                 # set mod to value in txtfield
-                self.set_mod(self.root.ids["param"])
+                threading.Thread(target=self.set_mod, args=(self.root.ids["param"],)).start()
     # app build function            
     def build(self):
         # bind key down events to call key_action func
