@@ -22,7 +22,7 @@ from kivy.uix.rst import RstDocument
 from kivy.clock import Clock, mainthread
 import kivy.garden.filebrowser as filebrowser
 
-from kivymd.button import MDIconButton, MDRaisedButton
+from kivymd.button import MDIconButton, MDRaisedButton, MDFlatButton
 from kivymd.label import MDLabel
 from kivymd.theming import ThemeManager
 from kivymd.textfields import MDTextField
@@ -104,7 +104,8 @@ Screen:
                             line_width: funcs_select.minimum_width-dp(36)
                             hint_text: "Function"
                             pos_hint:    {'center_x': 0.75, 'center_y': 0.5}
-                        MDRaisedButton:
+                        MDButtonFixed:
+                            id: func_btn
                             text: "SELECT"
                             opposite_colors: True
                             size_hint: None, None
@@ -131,7 +132,8 @@ Screen:
                             icon: 'file'
                             pos_hint: {'center_x': 0.75, 'center_y': 0.5}
                             on_release: app.open_dialog(cntrl_path)
-                        MDRaisedButton:
+                        MDButtonFixed:
+                            id: run_btn
                             text: "RUN"
                             opposite_colors: True
                             size_hint: None, None
@@ -148,8 +150,9 @@ Screen:
                         spacing: 30
                         MDCheckbox:
                             id: log_swich
-                            size_hint:    None, None
-                            size:        dp(36), dp(48)
+                            group: 'output'
+                            size_hint: None, None
+                            size: dp(36), dp(48)
                             pos_hint:    {'center_x': 0.75, 'center_y': 0.5}
                             active: True
                             on_release: app.switch_out(self,log_path.text, outbox)
@@ -157,19 +160,29 @@ Screen:
                             id: log_path
                             hint_text: "Log File Location"
                             line_width: funcs_select.minimum_width-dp(36)
-                            pos_hint:    {'center_x': 0.75, 'center_y': 0.5}
+                            pos_hint: {'center_x': 0.75, 'center_y': 0.5}
                             text: "log.txt"
                             disabled: not log_swich.active
                         MDIconButton:
                             icon: 'file'
                             pos_hint: {'center_x': 0.75, 'center_y': 0.5}
                             on_release: app.open_dialog(log_path)
-                    StdoutBox:
-                        id: outbox
-                        disabled: log_swich.active
-                        background_disabled_normal: 'res/disabled.png'
-                        background_normal: 'res/enabled.png'
-                        font_name: "DejaVuSans" 
+                    BoxLayout:
+                        spacing: 30
+                        MDCheckbox:
+                            id: box_swich
+                            group: 'output'
+                            size_hint: None, None
+                            size: dp(36), dp(48)
+                            pos_hint:    {'center_x': 0.75, 'center_y': 0.5}
+                            active: False
+                            on_release: app.switch_out(log_path,log_path.text, outbox)
+                        StdoutBox:
+                            id: outbox
+                            disabled: log_swich.active
+                            background_disabled_normal: 'res/disabled.png'
+                            background_normal: 'res/enabled.png'
+                            font_name: "DejaVuSans" 
                     
         MDTab:
             name: 'help'
@@ -278,6 +291,17 @@ def set_area(text_input):
 
 """*********************"""
 """END UTILITY FUNCTIONS"""
+class MDButtonFixed(MDRaisedButton):
+
+    def on_disabled(self, instance, value):
+        if instance.disabled:
+            self._current_button_color = self.md_bg_color_disabled
+            instance.elevation = 0
+        else:
+            self._current_button_color = self.md_bg_color
+            instance.elevation = instance.elevation_normal
+
+            
 
 # output class that uses a kivy TextInput as its buffer
 # used to caputes stdout to a TextInput
@@ -308,13 +332,15 @@ class MainApp(App):
     # make help accessable to kv objects
     global help_text
     my_help_text = help_text
+            
 
     # on_release event for checkbox controlling output location
     # when the check box is active (checked) std is directed to a log file whose location is given by a text field
     # if the box is not active, have std go to a TextInput at the bottom of the app
     def switch_out(self, button, log_path, area):
+
         global f
-        if button.active:
+        if self.root.ids['log_swich'].active:
             f=open(log_path,'a')
             sys.stdout = f
         else:
@@ -334,18 +360,15 @@ class MainApp(App):
         except Exception as e:
             # if there is an error loading the module selected, use a dialog to display the error
             # most calls will likely be when the user selects a file that is not a module
-            content = MDLabel(font_style='Body1',theme_text_color='Secondary',text="Error loading: "+path_a[-1].split('.')[0]+"\n"+str(e),size_hint_y=None,valign='top')
-            content.bind(texture_size=content.setter('size'))
-            self.dialog = MDDialog(title="Module Error",content=content,size_hint=(.8, None),height=dp(200),auto_dismiss=False)
-            self.dialog.add_action_button("DISMISS",action=lambda *x: self.dialog.dismiss())
-            self.dialog.open()
+            self.open_final_msg("Module Error","Error loading: "+path_a[-1].split('.')[0]+"\n"+str(e))
             # when the import fails reset the text in the control file path textfield
             # avoids the confusion of the file selected not importing but the file name appearing in the text field
             # implying that it is the current control program 
             mod_path.text = ""
             # reset list of funcs
             self.cnrtl_funcs = []
-
+        self.root.ids['mod_spinner'].active = False
+        self.toggle_btns()
         
     """BEGIN FILE BROWESER FUNCTIONS"""
     """*****************************"""
@@ -377,6 +400,8 @@ class MainApp(App):
         pup.dismiss()
         # if the textfield that has be written to is the control program testfield, then also load in module from file selected
         if field.hint_text == "Program Control File Location":
+            self.root.ids['mod_spinner'].active = True
+            self.toggle_btns()
             self.set_mod(field)
 
     # just use the success function
@@ -399,6 +424,9 @@ class MainApp(App):
         sv= ScrollView()
         sv.add_widget(menu_list)
         # go through funcs in control mod and add names with parameters to list
+        if not self.cnrtl_mod:
+            self.open_final_msg("Program Error", "No module loaded")
+            return
         if len(self.cnrtl_funcs)==0:
             self.open_final_msg("Program Error", "No functions found")
             return
@@ -422,11 +450,23 @@ class MainApp(App):
 
     # takes func and args as array and passes them to func using *    
     def func_wrapper(self,function, args):
-        ret= function(*args)
-        self.root.ids['func_spinner'].active = False
-        print(ret)
+        ret = None
+        try:
+            ret= function(*args)
+            print(ret)
+        except Exception as e:
+            print("Function threw error:\n"+str(e))
+        self.toggle_loading()
         return ret
 
+    def toggle_btns(self):
+        for btn in ['run_btn','func_btn']:
+            self.root.ids[btn].disabled = not self.root.ids[btn].disabled
+                
+    def toggle_loading(self):
+        self.root.ids['func_spinner'].active = not self.root.ids['func_spinner'].active
+        self.toggle_btns()            
+        
     """BEGIN RUN PARAM CHAIN"""
     """*********************"""  
     # runs func name that is in the function text field
@@ -574,7 +614,7 @@ class MainApp(App):
         # bind the schedule to dialog dismiss event
         # this has the app wait .5 sec after the dialog is dismissed to execute the next func in the run_param chain
         self.dialog.bind(on_dismiss=partial(self.__schedule, partial(self.__finish_run_param,func,run_params),.5))
-        self.root.ids['func_spinner'].active = True
+        self.toggle_loading()
         self.dialog.dismiss(force=True,animation=False)
         
     # called when a dialog message is final
@@ -593,6 +633,9 @@ class MainApp(App):
     """********************"""
     """END DIALOG FUNCTIONS"""
 
+
+    """BEGIN STARTUP FUNCTIONS"""
+    """***********************"""
     # function called on every key down event in the app
     # used to check if enter key is pressed
     # handles actions accordingly
@@ -602,7 +645,28 @@ class MainApp(App):
             # if the Control Module textfield is currently foucused
             if self.root.ids["param"].focused:
                 # set mod to value in txtfield
+                # uses thread to keep ui from freezing
+                self.root.ids['mod_spinner'].active = True
+                self.toggle_btns()
                 threading.Thread(target=self.set_mod, args=(self.root.ids["param"],)).start()
+
+    def on_start(self, **kwargs):
+        self.load_configure()
+
+    def load_configure(self):
+        try:
+            conf = open('conf.ini','r')
+            self.root.ids['param'].text = conf.readline().split('=')[1].strip()
+            if(len(self.root.ids['param'].text)>0):
+                self.set_mod(self.root.ids['param'])
+            self.root.ids['func_field'].text=conf.readline().split('=')[1].strip()
+            self.root.ids['cntrl_path'].text=conf.readline().split('=')[1].strip()
+            self.root.ids['log_path'].text=conf.readline().split('=')[1].strip()
+        except Exception as e:
+            # if for any reason the config file could not be opened, display the error to the user and exit
+            self.open_final_msg("File Error", "Error opening file:\n"+str(e))
+            return
+        
     # app build function            
     def build(self):
         # bind key down events to call key_action func
@@ -610,8 +674,12 @@ class MainApp(App):
         # set std to logfile
         sys.stdout = f
         # build the app form kv string
+        #Clock.schedule_once(self.load_configure, 1)
         return Builder.load_string(kv)
 
+    """*********************"""
+    """END STARTUP FUNCTIONS"""
+    
 
 if __name__ == '__main__':
     # multiprocessing io
