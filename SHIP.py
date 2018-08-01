@@ -157,6 +157,7 @@ def _sort_url_process(line):
         cj = CookieJar()
         opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cj))
         resp = opener.open(req)
+        # url regex: http(s?):\/\/(www\.)?(.*?)\.(com|org|net|gov)
         #use urllib urlparse to extract domain name from url that the doi link redirected to
         found = urllib.parse.urlparse(resp.geturl()).netloc
         #return the the domain name of the doi link of the article and the PubMed id of that article delimeted by ||
@@ -322,10 +323,10 @@ def get_from_pmcid_mp(id_file_path,pdf_output_dir,kickback_path,num_thread=10):
     results = pool.map(_unpack,pack)
     pool.close()
 # trys to download from URLs that have previously failed
-def _download_pdf_errors(download_url,pmed_id,pdf_output_dir):
-    e404 = open("error_404.txt",'a')
-    e403_ban = open("error_403_ipBan.txt",'a')
-    e403_rem = open("error_403_rem.txt",'a')
+def _download_pdf_errors(download_url,pmed_id,pdf_output_dir,kickback_dir):
+    e404 = open(kickback_dir+"error_404.txt",'a')
+    e403_ban = open(kickback_dir+"error_403_ipBan.txt",'a')
+    e403_rem = open(kickback_dir+"error_403_rem.txt",'a')
     try:
         #assemble http request. PMC is sus if you don't have User-Agent header
         headers = {}
@@ -357,26 +358,27 @@ def _unpack_error(s):
     a = s.split("+")
     print(a[0]+" "+a[1].strip())
     _download_pdf_errors("https://www.ncbi.nlm.nih.gov/pmc/articles/"+a[0]+"/pdf/",
-                        a[1].strip(),a[2])
+                        a[1].strip(),a[2],a[3])
 #regular threaded function
 #deafult num threads is 2
 #function to name PDFs
-def get_error(id_file_path,pdf_output_dir,num_thread=2):
+def get_error(id_file_path,pdf_output_dir,kickback_dir,num_thread=2):
     pdf_output_dir = _clean_path(pdf_output_dir)
     pool = Pool(num_thread)
     pack = []
     for line in open(id_file_path,'r'):
-        pack.append(line+"+"+pdf_output_dir)
+        pack.append(line+"+"+pdf_output_dir+"+"+kickback_dir)
     results = pool.map(_unpack_error,pack)
 
 #multiprocessing version of get_error
 #default number of threads is 2
-def get_error_mp(id_file_path,pdf_output_dir,num_thread=2):
+def get_error_mp(id_file_path,pdf_output_dir,kickback_dir,num_thread=2):
     pdf_output_dir = _clean_path(pdf_output_dir)
+    kickback_dir = _clean_path(kickback_dir)
     pool = PoolMP(num_thread)
     pack = []
     for line in open(id_file_path,'r'):
-        pack.append(line+"+"+pdf_output_dir)
+        pack.append(line+"+"+pdf_output_dir+"+"+kickback_dir)
     results = pool.map(_unpack_error,pack)
     pool.close()
     
@@ -480,8 +482,11 @@ def get_pdf_json_mp(pdf_dir,out_dir,num_thread=2):
     out_dir = _clean_path(out_dir)
     pool = PoolMP(num_thread)
     pack = []
-    for line in os.listdir(pdf_dir):
-        pack.append(pdf_dir+line+"+"+out_dir)
+    try:
+        for line in os.listdir(pdf_dir):
+            pack.append(pdf_dir+line+"+"+out_dir)
+    except Exception as e:
+        print(str(e))
     results = pool.map(_post_science_parse,pack)
     pool.close()
 
@@ -726,8 +731,8 @@ def count_heads(csv_file_path):
     return len(seen)
 
 def sort_inacessable_csv(csv_file_path, good_out_path, bad_out_path):
-    good_pdf= csv.writer(open(good_out_path, 'w'))
-    bad_pdf = csv.writer(open(bad_out_path, 'w'))
+    good_pdf= csv.writer(open(good_out_path, 'w'),lineterminator="\n")
+    bad_pdf = csv.writer(open(bad_out_path, 'w'),lineterminator="\n")
     with open(csv_file_path, encoding='utf-8') as csvf:
         readCSV = csv.reader(csvf, delimiter=',')
         for row in readCSV:
@@ -735,6 +740,51 @@ def sort_inacessable_csv(csv_file_path, good_out_path, bad_out_path):
                 bad_pdf.writerow(row)
             else:
                 good_pdf.writerow(row)
+
+                
+# Removes html content from csv file 
+def csv_rem_html(csv_in,csv_out):
+    csvf = csv.reader(open(csv_in,'r',encoding='utf-8'))
+    csvw = csv.writer(open(csv_out,'w',encoding='utf-8-sig'),lineterminator='\n')
+    for row in csvf:
+        br = []
+        diff = 0
+        for i in range(len(row)):
+            orig=row[i]
+            bs = re.sub(r'<\/?(.*?)>'," ",row[i],flags=re.DOTALL)
+            bs = re.sub(r'\[\[{(.*?)}\]\]'," ",bs)
+            bs += " "
+            regs = [[r'http(.*?)(\s)', ' '],[r'&(.*?)(\s|;)', ' '],[r'\t* *\n','\n'],[r'(\n{2,})','\n'],[r'(\r{2,})','\r'],[r'( {2,})',' ']]
+            for reg in regs:
+                bs = re.sub(reg[0],reg[1],bs)
+            br.append(bs.strip())
+            if(i==1):
+                diff = (len(orig)-len(bs))
+        br.append(diff)
+        csvw.writerow(br)
+
+        
+# Removes html content from xlsx file
+def xls_rem_html(xls_in,csv_out):
+    xlsf = pd.read_excel(xls_in,encoding='utf-8',header=None)
+    xlsf = xlsf.astype(str)
+    csvw = csv.writer(open(csv_out,'w',encoding='utf-8-sig'),lineterminator='\n')
+    for row in xlsf.itertuples():
+        br = []
+        diff = 0
+        for i in range(1,len(row),1):
+            orig=str(row[i])
+            bs = re.sub(r'<\/?(.*?)>'," ",str(row[i]),flags=re.DOTALL)
+            bs = re.sub(r'\[\[{(.*?)}\]\]'," ",bs)
+            bs += " "
+            regs = [[r'http(.*?)(\s)', ' '],[r'&(.*?)(\s|;)', ' '],[r'\t* *\n','\n'],[r'(\n{2,})','\n'],[r'(\r{2,})','\r'],[r'( {2,})',' ']]
+            for reg in regs:
+                bs = re.sub(reg[0],reg[1],bs)
+            br.append(bs.strip())
+            if(i==1):
+                diff = (len(orig)-len(bs))
+        br.append(diff)
+        csvw.writerow(br)
         
 """*************************"""
 """END CSV PARSING FUNCTIONS"""
@@ -862,6 +912,8 @@ def _digit_ratio(s):
     if c+d==0:
         return 0
     return d/(c+d)
+
+
 #computes the ratio of special characters to characters in a section of parsed PDF
 def _special_ratio(s):
     if len(s)==0:
@@ -877,3 +929,4 @@ def _special_ratio(s):
 
 if __name__ == '__main__':
     freeze_support()
+    xls_rem_html("C:\\Users\\jnt11\\Documents\\Copy_of_staff_profiles_from_john.xlsx","C:\\Users\\jnt11\\Downloads\\staff_profiles_no_html21.csv",)
