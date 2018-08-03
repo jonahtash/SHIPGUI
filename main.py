@@ -81,7 +81,7 @@ kv = '''
                 size: self.size[0],self.size[1]*.75
                 radius: 15, 0, 0, 15
     MDTextField:
-        size_hint_x: .8
+        size_hint_x: .6
         pos_hint_y: 1
         id: param_value
         canvas:
@@ -91,6 +91,11 @@ kv = '''
             Rectangle:
                 pos: self.pos[0]-15, self.pos[1]+5
                 size: self.size[0],self.size[1]*.75
+    MDIconButton:
+        icon: 'file'
+        pos_hint: {'center_x': 0.75, 'center_y': 0.5}
+        on_release: app.open_dialog(param_value)
+        size_hint_x: .2
 
         
 Screen:
@@ -255,7 +260,7 @@ Screen:
                             id: folder_field
                             line_width: control_py.minimum_width-dp(36)
                             pos_hint:    {'center_x': 0.75, 'center_y': 0.5}
-                            hint_text: "Control Files to Generate Folder Location"
+                            hint_text: "Generate Control Files Location"
                         MDIconButton:
                             icon: 'file'
                             pos_hint: {'center_x': 0.75, 'center_y': 0.5}
@@ -291,7 +296,7 @@ Screen:
                         id: ctrl_edit
                         line_width: control_py.minimum_width-dp(36)
                         pos_hint:    {'center_x': 0.75, 'center_y': 0.5}
-                        hint_text: "Control File to Edit Location"
+                        hint_text: "Edit Control File Location"
                         text: "cntrl.txt"
                     MDIconButton:
                         icon: 'file'
@@ -555,8 +560,8 @@ class MainApp(App):
             if line:
                 try:
                     param_box= CtrlParamEdit()
-                    param_box.children[0].text=strip_quotes(line[line.index(':')+1:].strip())
-                    param_box.children[1].text=line.split(':')[0].strip()
+                    param_box.children[1].text=strip_quotes(line[line.index(':')+1:].strip())
+                    param_box.children[2].text=line.split(':')[0].strip()
                     box.add_widget(param_box)
                     c+=1
                 except Exception as e:
@@ -564,18 +569,17 @@ class MainApp(App):
                     return
         box.size[1] = sum([dp(65) for c in box.children])+15
     def save_ctrl(self,ctrl_path,box):
-        cf = []
+        towrite=[]
+        for param_box in box.children:
+            towrite.append(param_box.children[2].text+": "+param_box.children[1].text+"\n")
         try:
             cf = open(ctrl_path.text,'w')
+            cf.writelines(towrite[::-1])
+            cf.truncate(cf.tell()-1)
+            cf.close()
         except Exception as e:
             self.open_final_msg("File Error","Unable to save control file "+ctrl_path.text+"\n"+str(e))
             return
-        towrite=[]
-        for param_box in box.children:
-            towrite.append(param_box.children[1].text+": "+param_box.children[0].text+"\n")
-        cf.writelines(towrite[::-1])
-        cf.truncate(cf.tell()-1)
-        cf.close()
 
         
     """BEGIN FILE BROWESER FUNCTIONS"""
