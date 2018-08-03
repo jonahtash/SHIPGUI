@@ -81,9 +81,9 @@ kv = '''
                 size: self.size[0],self.size[1]*.75
                 radius: 15, 0, 0, 15
     MDTextField:
-        id: param_value
         size_hint_x: .8
         pos_hint_y: 1
+        id: param_value
         canvas:
             Clear
             Color:
@@ -549,18 +549,18 @@ class MainApp(App):
         if stat(ctrl_path.text).st_size==0:
             self.open_final_msg("File Error","Empty control file")
             return
+        c=0
         for line in cf:
             line = line.strip()
-            print(line)
             if line:
                 try:
                     param_box= CtrlParamEdit()
                     param_box.children[0].text=strip_quotes(line[line.index(':')+1:].strip())
                     param_box.children[1].text=line.split(':')[0].strip()
                     box.add_widget(param_box)
+                    c+=1
                 except Exception as e:
                     self.open_final_msg("File Error","Malformed control file\n"+str(e))
-                    print(line+"######")
                     return
         box.size[1] = sum([dp(65) for c in box.children])+15
     def save_ctrl(self,ctrl_path,box):
