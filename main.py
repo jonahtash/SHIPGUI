@@ -928,16 +928,28 @@ class MainApp(App):
     def load_configure(self):
         try:
             conf = open('conf.ini','r')
-            self.root.ids['param'].text = conf.readline().split('=')[1].strip()
+            val_dict = {}
+            for line in conf:
+                line_split = line.strip().split('=')
+                print(line_split[0].strip())
+                val_dict[line_split[0].strip()] = line_split[1].strip()
+                print(val_dict)
+            if val_dict.get('default_module'):
+                self.root.ids['param'].text = val_dict.get('default_module')
+            
             if(len(self.root.ids['param'].text)>0):
                 self.toggle_btns()
                 self.set_mod(self.root.ids['param'])
-            self.root.ids['func_field'].text=conf.readline().split('=')[1].strip()
-            self.root.ids['cntrl_path'].text=conf.readline().split('=')[1].strip()
-            self.root.ids['log_path'].text=conf.readline().split('=')[1].strip()
+            if val_dict.get('default_function'):
+                self.root.ids['func_field'].text=val_dict.get('default_function')
+            if val_dict.get('default_control'): 
+                self.root.ids['cntrl_path'].text=val_dict.get('default_control')
+            if val_dict.get('default_log'):
+                self.root.ids['log_path'].text=val_dict.get('default_log')
+            
         except Exception as e:
             # if for any reason the config file could not be opened, display the error to the user and exit
-            self.open_final_msg("File Error", "Error opening file:\n"+str(e))
+            self.open_final_msg("File Error", "Error loading config file:\n"+str(e))
             return
         
     # app build function            
