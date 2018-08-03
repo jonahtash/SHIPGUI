@@ -2,7 +2,8 @@ from functools import partial
 import io
 import sys
 import time
-from os.path import expanduser
+from os.path import expanduser, join, exists
+from os import makedirs, stat
 from inspect import getmembers, isfunction, getargspec, signature
 import importlib
 from multiprocessing import freeze_support
@@ -15,22 +16,29 @@ from kivy.core.window import Window
 from kivy.metrics import dp
 from kivy.properties import ObjectProperty
 from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.popup import Popup
 from kivy.uix.textinput import TextInput
 from kivy.uix.scrollview import ScrollView
 from kivy.uix.rst import RstDocument
 from kivy.clock import Clock, mainthread
 import kivy.garden.filebrowser as filebrowser
+from kivy.core.clipboard import Clipboard
+from kivy.config import Config
+from kivy.base import EventLoop
+import kivy.garden.contextmenu
+from kivy.uix.behaviors.focus import FocusBehavior
 
 from kivymd.button import MDIconButton, MDRaisedButton, MDFlatButton
 from kivymd.label import MDLabel
 from kivymd.theming import ThemeManager
 from kivymd.textfields import MDTextField
-from kivymd.list import MDList, OneLineListItem
+from kivymd.list import MDList, OneLineListItem, TwoLineListItem, ThreeLineListItem
 from kivymd.dialog import MDDialog
 from kivymd.selectioncontrols import MDSwitch, MDCheckbox
 from kivymd.tabs import MDTabbedPanel, MDTab
 from kivymd.spinner import MDSpinner
+from kivymd.menu import MDDropdownMenu
 
 # A few notes on the comments in this document;
 # There are a number of variables/parameters that are semantically similar
@@ -49,16 +57,57 @@ from kivymd.spinner import MDSpinner
 
 kv = '''
 #:import parse_color kivy.parser.parse_color
+#:import Clipboard kivy.core.clipboard.Clipboard
+#: import Window kivy.core.window.Window
 
 <StdoutBox@TextInput>
     height: dp(20)
     readonly: True
 	
+<CtrlParamEdit@BoxLayout>
+    height: dp(48)
+    size_hint_y: None
+    MDLabel:
+        id: param_name
+        font_style: "Subhead"
+        size_hint_x: .2
+        pos_hint_y: 1
+        canvas.before:
+            Clear
+            Color:
+                rgba: parse_color('#E0E0E0')
+            RoundedRectangle:
+                pos: self.pos[0]-15, self.pos[1]+5
+                size: self.size[0],self.size[1]*.75
+                radius: 15, 0, 0, 15
+    MDTextField:
+        id: param_value
+        size_hint_x: .8
+        pos_hint_y: 1
+        canvas:
+            Clear
+            Color:
+                rgba: 1,1,1,.25
+            Rectangle:
+                pos: self.pos[0]-15, self.pos[1]+5
+                size: self.size[0],self.size[1]*.75
 
-	
+        
 Screen:
     id: main
     name: 'tabs'
+    ContextMenu:
+        id: rclick_menu
+        visible: False
+        ContextMenuTextItem:
+            text: "Copy"
+            on_release: app.clip_action(self)
+        ContextMenuTextItem:
+            text: "Cut"
+            on_release: app.clip_action(self)
+        ContextMenuTextItem:
+            text: "Paste"
+            on_release: app.clip_action(self)
     MDTabbedPanel:
         id: tab_panel
         tab_display_mode:'text'
@@ -69,9 +118,11 @@ Screen:
             id: main_tab
 
             AnchorLayout:
+                id: al
                 anchor_x: 'center'
                 anchor_y: 'center'
                 BoxLayout:
+                    id: main_tab_layout
                     orientation: 'vertical'
                     padding: dp(48)
                     spacing: 10
@@ -82,7 +133,7 @@ Screen:
                         MDTextField:
                             id: param
                             line_width: control_py.minimum_width-dp(36)
-                            pos_hint:    {'center_x': 0.75, 'center_y': 0.5}
+                            pos_hint:{'center_x': 0.75, 'center_y': 0.5}
                             hint_text: "Program Control File Location"
                         MDIconButton:
                             icon: 'file'
@@ -103,7 +154,7 @@ Screen:
                             id: func_field
                             line_width: funcs_select.minimum_width-dp(36)
                             hint_text: "Function"
-                            pos_hint:    {'center_x': 0.75, 'center_y': 0.5}
+                            pos_hint: {'center_x': 0.75, 'center_y': 0.5}
                         MDButtonFixed:
                             id: func_btn
                             text: "SELECT"
@@ -111,7 +162,7 @@ Screen:
                             size_hint: None, None
                             size: 4 * dp(48), dp(48)
                             pos_hint:    {'center_x': 0.75, 'center_y': 0.5}
-                            on_release: app.open_menu(func_field)
+                            on_release: app.open_menu_thread(func_field)
                         MDSpinner:
                             id: sel_spinner
                             size_hint: None, None
@@ -182,8 +233,87 @@ Screen:
                             disabled: log_swich.active
                             background_disabled_normal: 'res/disabled.png'
                             background_normal: 'res/enabled.png'
-                            font_name: "DejaVuSans" 
-                    
+                            font_name: "DejaVuSans"
+        MDTab:
+            name: 'ctrlfiles'
+            text: "Control Files"
+            id: ctrl_file
+
+            AnchorLayout:
+                anchor_x: 'center'
+                anchor_y: 'center'
+                BoxLayout:
+                    id: main_tab_layout
+                    orientation: 'vertical'
+                    padding: dp(48)
+                    spacing: 10
+                    BoxLayout:
+                        id: control_files
+                        orientation: 'horizontal'
+                        spacing: 30
+                        MDTextField:
+                            id: folder_field
+                            line_width: control_py.minimum_width-dp(36)
+                            pos_hint:    {'center_x': 0.75, 'center_y': 0.5}
+                            hint_text: "Control Files to Generate Folder Location"
+                        MDIconButton:
+                            icon: 'file'
+                            pos_hint: {'center_x': 0.75, 'center_y': 0.5}
+                            on_release: app.open_dialog(folder_field)
+                        MDButtonFixed:
+                            id: folder_btn
+                            text: "GENERATE"
+                            opposite_colors: True
+                            size_hint: None, None
+                            size: 4 * dp(48), dp(48)
+                            pos_hint:    {'center_x': 0.75, 'center_y': 0.5}
+                            on_release: app.create_ctrl_files(folder_field)
+                        MDSpinner:
+                            id: folder_spinner
+                            size_hint: None, None
+                            size: dp(46), dp(46)
+                            pos_hint: {'center_x': 0.5, 'center_y': 0.5}
+                            active: False
+        MDTab:
+            name: 'ctrlfileedit'
+            text: "Control File Editor"
+            id: ctrl_file
+            BoxLayout:
+                id: ctrl_file_edit
+                orientation: 'vertical'
+                padding: dp(48)
+                spacing: 10
+                BoxLayout:
+                    id: control_files_edit
+                    orientation: 'horizontal'
+                    spacing: 30
+                    MDTextField:
+                        id: ctrl_edit
+                        line_width: control_py.minimum_width-dp(36)
+                        pos_hint:    {'center_x': 0.75, 'center_y': 0.5}
+                        hint_text: "Control File to Edit Location"
+                        text: "cntrl.txt"
+                    MDIconButton:
+                        icon: 'file'
+                        pos_hint: {'center_x': 0.75, 'center_y': 0.5}
+                        on_release: app.open_dialog(ctrl_edit)
+                ScrollView:
+                    GridLayout:
+                        id: edit_params
+                        cols: 1
+                        row_default_height: dp(65)
+                        row_force_default: True
+                        padding: dp(18)
+                        size_hint_y:None
+                MDButtonFixed:
+                    id: save_btn
+                    text: "SAVE"
+                    opposite_colors: True
+                    size_hint: None, None
+                    size: 4 * dp(48), dp(48)
+                    pos_hint: {'center_x': 0.75, 'center_y': 0.5}
+                    on_release: app.save_ctrl(ctrl_edit,edit_params)
+               
         MDTab:
             name: 'help'
             text: "Help"
@@ -194,6 +324,7 @@ Screen:
                     base_font_size: 31
                     text: app.my_help_text
                     colors: {'background': 'FAFAFA','link': '0D47A1','paragraph': '202020ff','title': '212121','bullet': '000000ff'}
+
 
 
                     
@@ -261,6 +392,8 @@ user_path = expanduser("~")
 # the variable is assigned here for scope
 f = open('log.txt','a')
 
+
+
 """BEGIN UTILITY FUNCTIONS"""
 """***********************"""
 # strips leading and tailing ' and " chars		
@@ -289,6 +422,7 @@ def set_area(text_input):
     f.my_text_input = text_input
     sys.stdout = f
 
+
 """*********************"""
 """END UTILITY FUNCTIONS"""
 class MDButtonFixed(MDRaisedButton):
@@ -301,8 +435,10 @@ class MDButtonFixed(MDRaisedButton):
             self._current_button_color = self.md_bg_color
             instance.elevation = instance.elevation_normal
 
-            
-
+class CtrlParamEdit(BoxLayout):
+    def build(self):
+        pass
+    
 # output class that uses a kivy TextInput as its buffer
 # used to caputes stdout to a TextInput
 class TextBoxOut:
@@ -332,7 +468,8 @@ class MainApp(App):
     # make help accessable to kv objects
     global help_text
     my_help_text = help_text
-            
+
+    text_fields = ['func_field','param','cntrl_path','log_path','folder_field','ctrl_edit']
 
     # on_release event for checkbox controlling output location
     # when the check box is active (checked) std is directed to a log file whose location is given by a text field
@@ -357,6 +494,7 @@ class MainApp(App):
             self.cnrtl_mod = importlib.import_module(path_a[-1].split('.')[0])
             # reassign list of functions to functions within new module
             self.cnrtl_funcs = [o for o in getmembers(self.cnrtl_mod) if isfunction(o[1])]
+            self.root.ids.param.error=False
         except Exception as e:
             # if there is an error loading the module selected, use a dialog to display the error
             # most calls will likely be when the user selects a file that is not a module
@@ -367,8 +505,78 @@ class MainApp(App):
             mod_path.text = ""
             # reset list of funcs
             self.cnrtl_funcs = []
+            self.cnrtl_mod = None
         self.root.ids['mod_spinner'].active = False
         self.toggle_btns()
+
+
+    def create_ctrl_files(self,folder_field):
+        if not self.cnrtl_mod:
+            self.open_final_msg("Module Error","No Module Loaded")
+            return
+        if len(folder_field.text)>0:
+            if not exists(folder_field.text):
+                try:
+                    makedirs(folder_field.text)
+                except Exception as e:
+                    self.open_final_msg("Folder Error","Unable to create folder "+folder_field.text+"\n"+str(e))
+                    return
+            for func in self.cnrtl_funcs:
+                if func[0][0] != '_':
+                    try:
+                        cf = open(join(folder_field.text,func[0]+"_ctrl.txt"),'w')
+                        for arg in getargspec(func[1])[0]:
+                            cf.write(arg+": \n")
+                        cf.truncate(cf.tell()-1)
+                        cf.close()
+                    except Exception as e:
+                        self.open_final_msg("File Error","Unable to create control file "+func[0]+"_ctrl.txt\n"+str(e))
+                        return
+        else:
+            self.open_final_msg("File Error", "No folder selected")
+
+        self.root.ids['folder_spinner'].active = False
+        self.root.ids['folder_spinner'].disabled = False
+
+    def create_ctrl_edit(self,ctrl_path,box):
+        cf = []
+        box.clear_widgets()
+        try:
+            cf = open(ctrl_path.text,'r')
+        except Exception as e:
+            self.open_final_msg("File Error","Unable to open control file "+ctrl_path.text+"\n"+str(e))
+            return
+        if stat(ctrl_path.text).st_size==0:
+            self.open_final_msg("File Error","Empty control file")
+            return
+        for line in cf:
+            line = line.strip()
+            print(line)
+            if line:
+                try:
+                    param_box= CtrlParamEdit()
+                    param_box.children[0].text=strip_quotes(line[line.index(':')+1:].strip())
+                    param_box.children[1].text=line.split(':')[0].strip()
+                    box.add_widget(param_box)
+                except Exception as e:
+                    self.open_final_msg("File Error","Malformed control file\n"+str(e))
+                    print(line+"######")
+                    return
+        box.size[1] = sum([dp(65) for c in box.children])+15
+    def save_ctrl(self,ctrl_path,box):
+        cf = []
+        try:
+            cf = open(ctrl_path.text,'w')
+        except Exception as e:
+            self.open_final_msg("File Error","Unable to save control file "+ctrl_path.text+"\n"+str(e))
+            return
+        towrite=[]
+        for param_box in box.children:
+            towrite.append(param_box.children[1].text+": "+param_box.children[0].text+"\n")
+        cf.writelines(towrite[::-1])
+        cf.truncate(cf.tell()-1)
+        cf.close()
+
         
     """BEGIN FILE BROWESER FUNCTIONS"""
     """*****************************"""
@@ -402,7 +610,9 @@ class MainApp(App):
         if field.hint_text == "Program Control File Location":
             self.root.ids['mod_spinner'].active = True
             self.toggle_btns()
-            self.set_mod(field)
+            threading.Thread(target=self.set_mod, args=(field,)).start()
+        if field.hint_text == self.root.ids.ctrl_edit.hint_text:
+            self.create_ctrl_edit(field,self.root.ids.edit_params)
 
     # just use the success function
     def _fbrowser_submit(self, field, pup,instance):
@@ -415,6 +625,13 @@ class MainApp(App):
     def write_to_field(self,a,b,tf,text):
         a.text =b
         tf.parent.parent.parent.parent.parent.dismiss()
+        
+    def open_menu_thread(self,tf):
+        self.root.ids['sel_spinner'].active = True
+        self.toggle_btns()
+        t = threading.Thread(target=self.open_menu, args=(tf,))
+        t.start()
+        t.join()
 
     # opens func selection popup from list of funcs in control program module
     # called when "Select" button is pressed
@@ -426,9 +643,13 @@ class MainApp(App):
         # go through funcs in control mod and add names with parameters to list
         if not self.cnrtl_mod:
             self.open_final_msg("Program Error", "No module loaded")
+            self.root.ids['sel_spinner'].active = False
+            self.toggle_btns()
             return
         if len(self.cnrtl_funcs)==0:
             self.open_final_msg("Program Error", "No functions found")
+            self.root.ids['sel_spinner'].active = False
+            self.toggle_btns()
             return
         for func in self.cnrtl_funcs:
             # check if function is private (name starts with '_' by Python convention)
@@ -443,10 +664,21 @@ class MainApp(App):
                         func_string+= param.name+", "
                 func_string = func_string.strip()[:-1]+")"
                 # make func_string into menu list item and add to menu
-                menu_list.add_widget(OneLineListItem(text=func_string,on_touch_down=partial(self.write_to_field, tf,func_string)))
+                if len(func_string)<110:
+                    menu_list.add_widget(OneLineListItem(text=func_string,on_touch_down=partial(self.write_to_field, tf,func_string)))
+                elif len(func_string)<220:
+                    menu_list.add_widget(TwoLineListItem(text=func_string,on_touch_down=partial(self.write_to_field, tf,func_string)))
+                else:
+                    menu_list.add_widget(ThreeLineListItem(text=func_string,on_touch_down=partial(self.write_to_field, tf,func_string)))
+
+        Clock.schedule_once(partial(self.__cont_open_menu,sv),0)
+        
+    def __cont_open_menu(self,sv,ph):
         # make and open popup with list    
         pu = Popup(id='funcs',title='Function Selector',title_color=[255, 255, 255, 1],content=sv,size_hint=(None, None), size=(800, 500),auto_dismiss=False,background="res/back.png",)
         pu.open()
+        self.root.ids['sel_spinner'].active = False
+        self.toggle_btns()
 
     # takes func and args as array and passes them to func using *    
     def func_wrapper(self,function, args):
@@ -456,17 +688,16 @@ class MainApp(App):
             print(ret)
         except Exception as e:
             print("Function threw error:\n"+str(e))
-        self.toggle_loading()
+        Clock.schedule_once(self.toggle_loading,0)
         return ret
 
     def toggle_btns(self):
         for btn in ['run_btn','func_btn']:
             self.root.ids[btn].disabled = not self.root.ids[btn].disabled
-                
-    def toggle_loading(self):
+            
+    def toggle_loading(self,call):
         self.root.ids['func_spinner'].active = not self.root.ids['func_spinner'].active
-        self.toggle_btns()            
-        
+        self.toggle_btns()
     """BEGIN RUN PARAM CHAIN"""
     """*********************"""  
     # runs func name that is in the function text field
@@ -555,6 +786,7 @@ class MainApp(App):
 
     @mainthread
     def __finish_run_param(self,func,run_params,placeholder):
+        Clock.schedule_once(self.toggle_loading,0)
         try:
             # use func_wrapper to pass params to cntrl function as list
             # run the function and print the result
@@ -614,14 +846,13 @@ class MainApp(App):
         # bind the schedule to dialog dismiss event
         # this has the app wait .5 sec after the dialog is dismissed to execute the next func in the run_param chain
         self.dialog.bind(on_dismiss=partial(self.__schedule, partial(self.__finish_run_param,func,run_params),.5))
-        self.toggle_loading()
         self.dialog.dismiss(force=True,animation=False)
         
     # called when a dialog message is final
     # i.e. the function running ends after this dialog is opened
     # typically called for fatal error when setting up cntrl func,
     # Module not found, cntrl file not found, etc.
-    def open_final_msg(self,title, txt):
+    def open_final_msg(self,title,txt):
         # binds given title and text of message to dialog
         content = MDLabel(font_style='Body1',theme_text_color='Secondary',text=txt,size_hint_y=None,valign='top')
         content.bind(texture_size=content.setter('size'))
@@ -643,21 +874,63 @@ class MainApp(App):
         #if key pressed is enter key (key code 13)
         if args[1]==13:
             # if the Control Module textfield is currently foucused
-            if self.root.ids["param"].focused:
+            if self.root.ids['param'].focused:
                 # set mod to value in txtfield
                 # uses thread to keep ui from freezing
                 self.root.ids['mod_spinner'].active = True
                 self.toggle_btns()
                 threading.Thread(target=self.set_mod, args=(self.root.ids["param"],)).start()
 
+            if self.root.ids['folder_field'].focused:
+                self.root.ids['folder_spinner'].active = not self.root.ids['folder_spinner'].active
+                self.root.ids['folder_spinner'].disabled = not self.root.ids['folder_spinner'].disabled 
+                threading.Thread(target=self.create_ctrl_files, args=(self.root.ids['folder_field'],)).start()
+            if self.root.ids['ctrl_edit'].focused:
+                self.create_ctrl_edit(self.root.ids.ctrl_edit,self.root.ids.edit_params)
+                                  
     def on_start(self, **kwargs):
         self.load_configure()
 
+    def on_touch_down(self, window, touch):
+        if not self.root.ids['rclick_menu'].collide_point(*touch.pos):
+            self.root.ids['rclick_menu'].hide()
+        else:
+            FocusBehavior.ignored_touch.append(touch)
+        if touch.button == 'right':
+            FocusBehavior.ignored_touch.append(touch)
+            self.root.ids.rclick_menu.show(*touch.pos)
+            return True
+
+    def clip_action(self,clip_item):
+        self.root.ids['rclick_menu'].hide()
+        for field in self.text_fields:
+            fld = self.root.ids[field]
+            if fld.focused:
+                if clip_item.text == "Paste":
+                    if fld.selection_text:
+                        a = fld.selection_from if fld.selection_from<fld.selection_to else fld.selection_to
+                        z = fld.selection_from if fld.selection_from>fld.selection_to else fld.selection_to 
+                        fld.text = fld.text[:a]+Clipboard.paste()+fld.text[z:]
+                    else:
+                        fld.text = fld.text[:fld.cursor_index()]+Clipboard.paste()+fld.text[fld.cursor_index():]                
+
+                if clip_item.text == "Copy":
+                    Clipboard.copy(fld.selection_text)
+
+                if clip_item.text == "Cut":
+                    if fld.selection_text:
+                        a = fld.selection_from if fld.selection_from<fld.selection_to else fld.selection_to
+                        z = fld.selection_from if fld.selection_from>fld.selection_to else fld.selection_to 
+                        Clipboard.copy(fld.selection_text)
+                        fld.text = fld.text[:a]+fld.text[z:]
+                    else:
+                        Clipboard.copy("")
     def load_configure(self):
         try:
             conf = open('conf.ini','r')
             self.root.ids['param'].text = conf.readline().split('=')[1].strip()
             if(len(self.root.ids['param'].text)>0):
+                self.toggle_btns()
                 self.set_mod(self.root.ids['param'])
             self.root.ids['func_field'].text=conf.readline().split('=')[1].strip()
             self.root.ids['cntrl_path'].text=conf.readline().split('=')[1].strip()
@@ -670,11 +943,11 @@ class MainApp(App):
     # app build function            
     def build(self):
         # bind key down events to call key_action func
-        Window.bind(on_key_down=self.key_action)
+        Window.bind(on_key_down=self.key_action,on_touch_down=self.on_touch_down)
         # set std to logfile
         sys.stdout = f
         # build the app form kv string
-        #Clock.schedule_once(self.load_configure, 1)
+        Config.set('input', 'mouse', 'mouse,disable_multitouch')
         return Builder.load_string(kv)
 
     """*********************"""
