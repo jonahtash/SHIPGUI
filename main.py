@@ -2,7 +2,7 @@ from functools import partial
 import io
 import sys
 import time
-from os.path import expanduser, join, exists
+from os.path import expanduser, join, exists, isdir
 from os import makedirs, stat
 from inspect import getmembers, isfunction, getargspec, signature
 import importlib
@@ -230,7 +230,7 @@ Screen:
                             on_release: app.switch_out(log_path,log_path.text, outbox)
                         StdoutBox:
                             id: outbox
-                            disabled: log_swich.active
+                            disabled: not box_swich.active
                             background_disabled_normal: 'res/disabled.png'
                             background_normal: 'res/enabled.png'
                             font_name: "DejaVuSans"
@@ -360,7 +360,7 @@ To run a program using this user interface, the you, the user, must assign a min
 
 ``out_csv: path/to/csv/bar.csv``
 
-Notes: The inclusion of optional parameters is optional. The name of the parameter that appears before the colon does not have to match the name of a parameter in the function definition, however **ORDER MATTERS!!!** Parameters will be passed to the function in the order the appear, NOT BY PARAMETER NAME!!! (<- just want to reiterate that this is important).
+Notes: The inclusion of optional parameters is optional. The name of the parameter that appears before the colon does not have to match the name of a parameter in the function definition, however **ORDER MATTERS!!!** Parameters will be passed to the function in the order the appear, NOT BY PARAMETER NAME!!! (<- just want to reiterate that this is important). This user interface comes with tools to generate and maintain control files see `Maintaining Control Files`_.
 
 **You're all set!** Press the run button to run the function selected.
 
@@ -378,6 +378,16 @@ TL;DR
 **Select a Control File** Either type the path to a .txt control file in the third text field or select a file by pressing the file button.
 
 **Press the RUN button** Press the ``RUN`` button.
+
+.. _Maintaining control files:
+
+Maintaining Control Files
+-------------------------
+Also included in this interface is a tool to auto-generate control files and an editor for control files.
+
+**Control File Generation** Under the tab `"Generate Control Files"` is a tool for generating correctly formatted control files for all functions within a given module. Simply input the path to folder in the text area titled `"Generate Control Files Folder Location"` or select a folder by pressing the file button. Now press the `"GENERATE"` button and the program will output correctly a formatted control file for each function in the currently loaded module.
+
+**Control File Editor** Also in this interface is tool for editing control files. Either type the path to a file in the text area titled `"Edit Control File Location"` and press enter or simply select a control file by pressing the file icon. After loading a control file, a line will appear for each parameter in the file. Each line will have the parameter name, a text area to type a value for that parameter, and a file icon that will put a file path into the text area. When you are finished editing, simply press the `"SAVE"` button and your changes will be saved to the control file.
 
 '''
 
@@ -451,11 +461,13 @@ class MDButtonFixed(MDRaisedButton):
 
     def on_disabled(self, instance, value):
         if instance.disabled:
-            self._current_button_color = self.md_bg_color_disabled
+            self.opacity = 1
+            instance._current_button_color = self.md_bg_color_disabled
             instance.elevation = 0
         else:
             self._current_button_color = self.md_bg_color
             instance.elevation = instance.elevation_normal
+
     def __init__(self, **kwargs):
         Window.bind(mouse_pos=self._mouse_move)
         self.hovering = BooleanProperty(False)
@@ -475,7 +487,8 @@ class MDButtonFixed(MDRaisedButton):
         self.dispatch('on_hover' if is_collide else 'on_exit')
  
     def on_hover(self):
-        self.opacity = .75
+        if not self.disabled:
+            self.opacity = .75
  
     def on_exit(self):
         self.opacity = 1
@@ -526,8 +539,10 @@ class MainApp(App):
         if self.root.ids['log_swich'].active:
             f=open(log_path,'a')
             sys.stdout = f
-        else:
+        elif self.root.ids['box_swich'].active:
             set_area(area)
+        else:
+            sys.stdout=sys.__stdout__
 
     # used to switch module control program
     # called when new file is chosen for control program (first TextField)
@@ -571,6 +586,11 @@ class MainApp(App):
                     self.root.ids['folder_spinner'].active = False
                     self.root.ids['folder_spinner'].disabled = False
                     return
+            if not isdir(folder_field.text):
+                self.open_final_msg("Folder Error","Selected path is not directory.")
+                self.root.ids['folder_spinner'].active = False
+                self.root.ids['folder_spinner'].disabled = False
+                return
             for func in self.cnrtl_funcs:
                 if func[0][0] != '_':
                     try:
@@ -847,7 +867,7 @@ class MainApp(App):
 
     @mainthread
     def __finish_run_param(self,func,run_params,placeholder):
-        Clock.schedule_once(self.toggle_loading,0)
+        Clock.schedule_once(self.toggle_loading,.25)
         try:
             # use func_wrapper to pass params to cntrl function as list
             # run the function and print the result

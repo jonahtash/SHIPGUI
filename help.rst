@@ -31,7 +31,7 @@ To run a program using this user interface, the you, the user, must assign a min
 
 ``out_csv: path/to/csv/bar.csv``
 
-Notes: The inclusion of optional parameters is optional. The name of the parameter that appears before the colon does not have to match the name of a parameter in the function definition, however **ORDER MATTERS!!!** Parameters will be passed to the function in the order the appear, NOT BY PARAMETER NAME!!! (<- just want to reiterate that this is important).
+Notes: The inclusion of optional parameters is optional. The name of the parameter that appears before the colon does not have to match the name of a parameter in the function definition, however **ORDER MATTERS!!!** Parameters will be passed to the function in the order the appear, NOT BY PARAMETER NAME!!! (<- just want to reiterate that this is important). This user interface comes with tools to generate and maintain control files see `Maintaining Control Files`_.
 
 **You're all set!** Press the run button to run the function selected.
 
@@ -49,3 +49,13 @@ TL;DR
 **Select a Control File** Either type the path to a .txt control file in the third text field or select a file by pressing the file button.
 
 **Press the RUN button** Press the ``RUN`` button.
+
+.. _Maintaining control files:
+
+Maintaining Control Files
+-------------------------
+Also included in this interface is a tool to auto-generate control files and an editor for control files.
+
+**Control File Generation** Under the tab `"Generate Control Files"` is a tool for generating correctly formatted control files for all functions within a given module. Simply input the path to folder in the text area titled `"Generate Control Files Folder Location"` or select a folder by pressing the file button. Now press the `"GENERATE"` button and the program will output correctly a formatted control file for each function in the currently loaded module.
+
+**Control File Editor** Also in this interface is tool for editing control files. Either type the path to a file in the text area titled `"Edit Control File Location"` and press enter or simply select a control file by pressing the file icon. After loading a control file, a line will appear for each parameter in the file. Each line will have the parameter name, a text area to type a value for that parameter, and a file icon that will put a file path into the text area. When you are finished editing, simply press the `"SAVE"` button and your changes will be saved to the control file.
