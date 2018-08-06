@@ -14,7 +14,7 @@ from kivy.app import App
 from kivy.lang import Builder
 from kivy.core.window import Window
 from kivy.metrics import dp
-from kivy.properties import ObjectProperty
+from kivy.properties import ObjectProperty, BooleanProperty
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.floatlayout import FloatLayout
 from kivy.uix.popup import Popup
@@ -63,7 +63,11 @@ kv = '''
 <StdoutBox@TextInput>
     height: dp(20)
     readonly: True
-	
+    
+<IconHover@MDIconButton>
+    icon: 'file'
+    pos_hint: {'center_x': 0.75, 'center_y': 0.5}
+
 <CtrlParamEdit@BoxLayout>
     height: dp(48)
     size_hint_y: None
@@ -82,7 +86,6 @@ kv = '''
                 radius: 15, 0, 0, 15
     MDTextField:
         size_hint_x: .6
-        pos_hint_y: 1
         id: param_value
         canvas:
             Clear
@@ -91,9 +94,7 @@ kv = '''
             Rectangle:
                 pos: self.pos[0]-15, self.pos[1]+5
                 size: self.size[0],self.size[1]*.75
-    MDIconButton:
-        icon: 'file'
-        pos_hint: {'center_x': 0.75, 'center_y': 0.5}
+    IconHover:
         on_release: app.open_dialog(param_value)
         size_hint_x: .2
 
@@ -140,9 +141,7 @@ Screen:
                             line_width: control_py.minimum_width-dp(36)
                             pos_hint:{'center_x': 0.75, 'center_y': 0.5}
                             hint_text: "Program Control File Location"
-                        MDIconButton:
-                            icon: 'file'
-                            pos_hint: {'center_x': 0.75, 'center_y': 0.5}
+                        IconHover:
                             on_release: app.open_dialog(param)
                         MDSpinner:
                             id: mod_spinner
@@ -184,9 +183,7 @@ Screen:
                             line_width: funcs_select.minimum_width-dp(36)
                             pos_hint:    {'center_x': 0.75, 'center_y': 0.5}
                             text: "cntrl.txt"
-                        MDIconButton:
-                            icon: 'file'
-                            pos_hint: {'center_x': 0.75, 'center_y': 0.5}
+                        IconHover:
                             on_release: app.open_dialog(cntrl_path)
                         MDButtonFixed:
                             id: run_btn
@@ -219,9 +216,7 @@ Screen:
                             pos_hint: {'center_x': 0.75, 'center_y': 0.5}
                             text: "log.txt"
                             disabled: not log_swich.active
-                        MDIconButton:
-                            icon: 'file'
-                            pos_hint: {'center_x': 0.75, 'center_y': 0.5}
+                        IconHover:
                             on_release: app.open_dialog(log_path)
                     BoxLayout:
                         spacing: 30
@@ -241,7 +236,7 @@ Screen:
                             font_name: "DejaVuSans"
         MDTab:
             name: 'ctrlfiles'
-            text: "Control Files"
+            text: "Generate Control Files"
             id: ctrl_file
 
             AnchorLayout:
@@ -260,10 +255,8 @@ Screen:
                             id: folder_field
                             line_width: control_py.minimum_width-dp(36)
                             pos_hint:    {'center_x': 0.75, 'center_y': 0.5}
-                            hint_text: "Generate Control Files Location"
-                        MDIconButton:
-                            icon: 'file'
-                            pos_hint: {'center_x': 0.75, 'center_y': 0.5}
+                            hint_text: "Generate Control Files Folder Location"
+                        IconHover:
                             on_release: app.open_dialog(folder_field)
                         MDButtonFixed:
                             id: folder_btn
@@ -297,10 +290,7 @@ Screen:
                         line_width: control_py.minimum_width-dp(36)
                         pos_hint:    {'center_x': 0.75, 'center_y': 0.5}
                         hint_text: "Edit Control File Location"
-                        text: "cntrl.txt"
-                    MDIconButton:
-                        icon: 'file'
-                        pos_hint: {'center_x': 0.75, 'center_y': 0.5}
+                    IconHover:
                         on_release: app.open_dialog(ctrl_edit)
                 ScrollView:
                     GridLayout:
@@ -316,7 +306,7 @@ Screen:
                     opposite_colors: True
                     size_hint: None, None
                     size: 4 * dp(48), dp(48)
-                    pos_hint: {'center_x': 0.75, 'center_y': 0.5}
+                    pos_hint: {'center_x': 0.9, 'center_y': 0.5}
                     on_release: app.save_ctrl(ctrl_edit,edit_params)
                
         MDTab:
@@ -430,6 +420,31 @@ def set_area(text_input):
 
 """*********************"""
 """END UTILITY FUNCTIONS"""
+class IconHover(MDIconButton):
+    def __init__(self, **kwargs):
+        Window.bind(mouse_pos=self._mouse_move)
+        self.hovering = BooleanProperty(False)
+        self.poi = ObjectProperty(None)
+        self.register_event_type('on_hover')
+        self.register_event_type('on_exit')
+        super(IconHover, self).__init__(**kwargs)
+ 
+    def _mouse_move(self, *args):
+        if not self.get_root_window():
+            return
+        is_collide = self.collide_point(*self.to_widget(*args[1]))
+        if self.hovering == is_collide:
+            return
+        self.poi = args[1]
+        self.hovering = is_collide
+        self.dispatch('on_hover' if is_collide else 'on_exit')
+ 
+    def on_hover(self):
+        self.opacity = .8
+ 
+    def on_exit(self):
+        self.opacity = 1
+
 class MDButtonFixed(MDRaisedButton):
 
     def on_disabled(self, instance, value):
@@ -439,6 +454,30 @@ class MDButtonFixed(MDRaisedButton):
         else:
             self._current_button_color = self.md_bg_color
             instance.elevation = instance.elevation_normal
+    def __init__(self, **kwargs):
+        Window.bind(mouse_pos=self._mouse_move)
+        self.hovering = BooleanProperty(False)
+        self.poi = ObjectProperty(None)
+        self.register_event_type('on_hover')
+        self.register_event_type('on_exit')
+        super(MDButtonFixed, self).__init__(**kwargs)
+ 
+    def _mouse_move(self, *args):
+        if not self.get_root_window():
+            return
+        is_collide = self.collide_point(*self.to_widget(*args[1]))
+        if self.hovering == is_collide:
+            return
+        self.poi = args[1]
+        self.hovering = is_collide
+        self.dispatch('on_hover' if is_collide else 'on_exit')
+ 
+    def on_hover(self):
+        self.opacity = .75
+ 
+    def on_exit(self):
+        self.opacity = 1
+
 
 class CtrlParamEdit(BoxLayout):
     def build(self):
@@ -518,6 +557,8 @@ class MainApp(App):
     def create_ctrl_files(self,folder_field):
         if not self.cnrtl_mod:
             self.open_final_msg("Module Error","No Module Loaded")
+            self.root.ids['folder_spinner'].active = False
+            self.root.ids['folder_spinner'].disabled = False
             return
         if len(folder_field.text)>0:
             if not exists(folder_field.text):
@@ -525,6 +566,8 @@ class MainApp(App):
                     makedirs(folder_field.text)
                 except Exception as e:
                     self.open_final_msg("Folder Error","Unable to create folder "+folder_field.text+"\n"+str(e))
+                    self.root.ids['folder_spinner'].active = False
+                    self.root.ids['folder_spinner'].disabled = False
                     return
             for func in self.cnrtl_funcs:
                 if func[0][0] != '_':
@@ -536,10 +579,15 @@ class MainApp(App):
                         cf.close()
                     except Exception as e:
                         self.open_final_msg("File Error","Unable to create control file "+func[0]+"_ctrl.txt\n"+str(e))
+                        self.root.ids['folder_spinner'].active = False
+                        self.root.ids['folder_spinner'].disabled = False
                         return
         else:
             self.open_final_msg("File Error", "No folder selected")
-
+            self.root.ids['folder_spinner'].active = False
+            self.root.ids['folder_spinner'].disabled = False
+            
+        self.open_final_msg("Success","Control files created successfully.","Ok")
         self.root.ids['folder_spinner'].active = False
         self.root.ids['folder_spinner'].disabled = False
 
@@ -552,7 +600,7 @@ class MainApp(App):
             self.open_final_msg("File Error","Unable to open control file "+ctrl_path.text+"\n"+str(e))
             return
         if stat(ctrl_path.text).st_size==0:
-            self.open_final_msg("File Error","Empty control file")
+            self.open_final_msg("File Error","Control file empty")
             return
         c=0
         for line in cf:
@@ -565,10 +613,16 @@ class MainApp(App):
                     box.add_widget(param_box)
                     c+=1
                 except Exception as e:
-                    self.open_final_msg("File Error","Malformed control file\n"+str(e))
+                    self.open_final_msg("File Error","Malformed control file")
                     return
         box.size[1] = sum([dp(65) for c in box.children])+15
     def save_ctrl(self,ctrl_path,box):
+        if len(ctrl_path.text)<1:
+            self.open_final_msg("File Error","No file selected.")
+            return
+        if not box.children:
+            self.open_final_msg("File Error","No file loaded.")
+            return       
         towrite=[]
         for param_box in box.children:
             towrite.append(param_box.children[2].text+": "+param_box.children[1].text+"\n")
@@ -577,6 +631,7 @@ class MainApp(App):
             cf.writelines(towrite[::-1])
             cf.truncate(cf.tell()-1)
             cf.close()
+            self.open_final_msg("Success","File saved successfully.","Ok")
         except Exception as e:
             self.open_final_msg("File Error","Unable to save control file "+ctrl_path.text+"\n"+str(e))
             return
@@ -856,13 +911,13 @@ class MainApp(App):
     # i.e. the function running ends after this dialog is opened
     # typically called for fatal error when setting up cntrl func,
     # Module not found, cntrl file not found, etc.
-    def open_final_msg(self,title,txt):
+    def open_final_msg(self,title,txt,btn_text="Dismiss"):
         # binds given title and text of message to dialog
         content = MDLabel(font_style='Body1',theme_text_color='Secondary',text=txt,size_hint_y=None,valign='top')
         content.bind(texture_size=content.setter('size'))
         self.dialog = MDDialog(title=title,content=content,size_hint=(.8, None),height=dp(200),auto_dismiss=False)
         # only option is to dismiss
-        self.dialog.add_action_button("Dismiss",action=lambda *x: self.dialog.dismiss())
+        self.dialog.add_action_button(btn_text,action=lambda *x: self.dialog.dismiss())
         self.dialog.open()
 
     """********************"""
@@ -964,6 +1019,7 @@ class MainApp(App):
         sys.stdout = f
         # build the app form kv string
         Config.set('input', 'mouse', 'mouse,disable_multitouch')
+        self.theme_cls.theme_style = 'Light'
         return Builder.load_string(kv)
 
     """*********************"""
