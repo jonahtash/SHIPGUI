@@ -420,6 +420,7 @@ def set_area(text_input):
 
 """*********************"""
 """END UTILITY FUNCTIONS"""
+# Hover effects credit https://codecalamity.com/first-steps-into-gui-design-with-kivy/
 class IconHover(MDIconButton):
     def __init__(self, **kwargs):
         Window.bind(mouse_pos=self._mouse_move)
@@ -445,6 +446,7 @@ class IconHover(MDIconButton):
     def on_exit(self):
         self.opacity = 1
 
+# Hover effects credit https://codecalamity.com/first-steps-into-gui-design-with-kivy/
 class MDButtonFixed(MDRaisedButton):
 
     def on_disabled(self, instance, value):
