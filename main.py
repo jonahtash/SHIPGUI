@@ -2,8 +2,7 @@ from functools import partial
 import io
 import sys
 import time
-from os.path import expanduser, join, exists, isdir
-from os import makedirs, stat
+import os
 from inspect import getmembers, isfunction, getargspec, signature
 import importlib
 from multiprocessing import freeze_support
@@ -87,6 +86,7 @@ kv = '''
     MDTextField:
         size_hint_x: .6
         id: param_value
+        on_focus: app.set_text_focused(self)
         canvas:
             Clear
             Color:
@@ -250,7 +250,7 @@ Screen:
                     BoxLayout:
                         id: control_files
                         orientation: 'horizontal'
-                        spacing: 30
+                        spacing: 25
                         MDTextField:
                             id: folder_field
                             line_width: control_py.minimum_width-dp(36)
@@ -258,6 +258,7 @@ Screen:
                             hint_text: "Generate Control Files Folder Location"
                         IconHover:
                             on_release: app.open_dialog(folder_field)
+                            icon: 'folder'
                         MDButtonFixed:
                             id: folder_btn
                             text: "GENERATE"
@@ -280,19 +281,23 @@ Screen:
                 id: ctrl_file_edit
                 orientation: 'vertical'
                 padding: dp(48)
-                spacing: 10
+                spacing: 20
                 BoxLayout:
                     id: control_files_edit
                     orientation: 'horizontal'
                     spacing: 30
+                    height: dp(48)
                     MDTextField:
                         id: ctrl_edit
                         line_width: control_py.minimum_width-dp(36)
-                        pos_hint:    {'center_x': 0.75, 'center_y': 0.5}
+                        pos_hint:    {'center_x': 0.75, 'center_y': .75}
                         hint_text: "Edit Control File Location"
                     IconHover:
                         on_release: app.open_dialog(ctrl_edit)
+                        pos_hint:    {'center_x': 0.75, 'center_y': .75}
                 ScrollView:
+                    pos_hint_y: 0
+                    bar_width: 2.5
                     GridLayout:
                         id: edit_params
                         cols: 1
@@ -306,19 +311,18 @@ Screen:
                     opposite_colors: True
                     size_hint: None, None
                     size: 4 * dp(48), dp(48)
-                    pos_hint: {'center_x': 0.9, 'center_y': 0.5}
+                    pos_hint: {'center_x': 0.9, 'y': 0.8}
                     on_release: app.save_ctrl(ctrl_edit,edit_params)
-               
+                
         MDTab:
             name: 'help'
             text: "Help"
             id: help_tab
-            ScrollView:
-                RstDocument:
-                    underline_color: "0277BD"
-                    base_font_size: 31
-                    text: app.my_help_text
-                    colors: {'background': 'FAFAFA','link': '0D47A1','paragraph': '202020ff','title': '212121','bullet': '000000ff'}
+            RstDocument:
+                underline_color: "0277BD"
+                base_font_size: 31
+                text: app.my_help_text
+                colors: {'background': 'FAFAFA','link': '0D47A1','paragraph': '202020ff','title': '212121','bullet': '000000ff'}
 
 
 
@@ -360,7 +364,7 @@ To run a program using this user interface, the you, the user, must assign a min
 
 ``out_csv: path/to/csv/bar.csv``
 
-Notes: The inclusion of optional parameters is optional. The name of the parameter that appears before the colon does not have to match the name of a parameter in the function definition, however **ORDER MATTERS!!!** Parameters will be passed to the function in the order the appear, NOT BY PARAMETER NAME!!! (<- just want to reiterate that this is important). This user interface comes with tools to generate and maintain control files see `Maintaining Control Files`_.
+Notes: The inclusion of optional parameters is optional. The name of the parameter that appears before the colon does not have to match the name of a parameter in the function definition, however **ORDER MATTERS!!!** Parameters will be passed to the function in the order in which they appear, NOT BY PARAMETER NAME!!! (<- just want to reiterate that this is important). This user interface comes with tools to generate and maintain control files see `Maintaining Control Files`_.
 
 **You're all set!** Press the run button to run the function selected.
 
@@ -392,7 +396,7 @@ Also included in this interface is a tool to auto-generate control files and an 
 '''
 
 # set a variable to the location of the user's home directory. Used to direct file browser
-user_path = expanduser("~")
+user_path = os.path.expanduser("~")
 # by default output stdout to a file called 'log.txt' sys.stdout is assigned to this file object in MainApp.build
 # the variable is assigned here for scope
 f = open('log.txt','a')
@@ -530,6 +534,8 @@ class MainApp(App):
 
     text_fields = ['func_field','param','cntrl_path','log_path','folder_field','ctrl_edit']
 
+    text_focused = None
+
     # on_release event for checkbox controlling output location
     # when the check box is active (checked) std is directed to a log file whose location is given by a text field
     # if the box is not active, have std go to a TextInput at the bottom of the app
@@ -544,6 +550,9 @@ class MainApp(App):
         else:
             sys.stdout=sys.__stdout__
 
+    def set_text_focused(self, textf):
+        self.text_focused = textf
+    
     # used to switch module control program
     # called when new file is chosen for control program (first TextField)
     def set_mod(self,mod_path):
@@ -572,21 +581,26 @@ class MainApp(App):
 
 
     def create_ctrl_files(self,folder_field):
+        self.root.ids['folder_spinner'].active = True
+        self.root.ids['folder_spinner'].disabled = True
+        threading.Thread(target=self._create_ctrl_files_pass,args=(folder_field,)).start()
+
+    def _create_ctrl_files_pass(self,folder_field):
         if not self.cnrtl_mod:
             self.open_final_msg("Module Error","No Module Loaded")
             self.root.ids['folder_spinner'].active = False
             self.root.ids['folder_spinner'].disabled = False
             return
         if len(folder_field.text)>0:
-            if not exists(folder_field.text):
+            if not os.path.exists(folder_field.text):
                 try:
-                    makedirs(folder_field.text)
+                    os.makedirs(folder_field.text)
                 except Exception as e:
                     self.open_final_msg("Folder Error","Unable to create folder "+folder_field.text+"\n"+str(e))
                     self.root.ids['folder_spinner'].active = False
                     self.root.ids['folder_spinner'].disabled = False
                     return
-            if not isdir(folder_field.text):
+            if not os.path.isdir(folder_field.text):
                 self.open_final_msg("Folder Error","Selected path is not directory.")
                 self.root.ids['folder_spinner'].active = False
                 self.root.ids['folder_spinner'].disabled = False
@@ -594,10 +608,18 @@ class MainApp(App):
             for func in self.cnrtl_funcs:
                 if func[0][0] != '_':
                     try:
-                        cf = open(join(folder_field.text,func[0]+"_ctrl.txt"),'w')
-                        for arg in getargspec(func[1])[0]:
-                            cf.write(arg+": \n")
-                        cf.truncate(cf.tell()-1)
+                        cf = open(os.path.join(folder_field.text,func[0]+"_ctrl.txt"),'w')
+                        argspec= getargspec(func[1])
+                        print(getargspec(func[1]))
+                        if argspec[0]:
+                            for arg in argspec[0]:
+                                cf.write(arg+": \n")
+                        if argspec[1]:
+                            cf.write(argspec[1]+": \n")
+                        if argspec[2]:
+                            cf.write(argspec[2]+": \n")
+                        if argspec[0] or argspec[1] or argspec[2]:
+                            cf.truncate(cf.tell()-1)
                         cf.close()
                     except Exception as e:
                         self.open_final_msg("File Error","Unable to create control file "+func[0]+"_ctrl.txt\n"+str(e))
@@ -621,7 +643,7 @@ class MainApp(App):
         except Exception as e:
             self.open_final_msg("File Error","Unable to open control file "+ctrl_path.text+"\n"+str(e))
             return
-        if stat(ctrl_path.text).st_size==0:
+        if os.stat(ctrl_path.text).st_size==0:
             self.open_final_msg("File Error","Control file empty")
             return
         c=0
@@ -636,8 +658,9 @@ class MainApp(App):
                     c+=1
                 except Exception as e:
                     self.open_final_msg("File Error","Malformed control file")
+                    print(str(e))
                     return
-        box.size[1] = sum([dp(65) for c in box.children])+15
+        box.size[1] = sum([dp(65) for c in box.children])+20
     def save_ctrl(self,ctrl_path,box):
         if len(ctrl_path.text)<1:
             self.open_final_msg("File Error","No file selected.")
@@ -694,6 +717,7 @@ class MainApp(App):
             threading.Thread(target=self.set_mod, args=(field,)).start()
         if field.hint_text == self.root.ids.ctrl_edit.hint_text:
             self.create_ctrl_edit(field,self.root.ids.edit_params)
+            
 
     # just use the success function
     def _fbrowser_submit(self, field, pup,instance):
@@ -719,7 +743,7 @@ class MainApp(App):
     def open_menu(self,tf):
         # make KivyMd list
         menu_list = MDList(id = 'func_list')
-        sv= ScrollView()
+        sv= ScrollView(scroll_wheel_distance=35)
         sv.add_widget(menu_list)
         # go through funcs in control mod and add names with parameters to list
         if not self.cnrtl_mod:
@@ -791,6 +815,9 @@ class MainApp(App):
     def run_param(self,cntrl_path,function_text_field):
         # func_name string that conmes before ( in the function_text_field
         func_name = function_text_field.text.split('(')[0]
+        if len(func_name)<1:
+            self.open_final_msg("Program Error", "No function selected")
+            return
         # get reference to function with name func_name by searching through list of funcs in module
         func = [o[1] for o in self.cnrtl_funcs if func_name==o[0]]
         # params to be filled with the parameter name within the selected function
@@ -984,28 +1011,37 @@ class MainApp(App):
 
     def clip_action(self,clip_item):
         self.root.ids['rclick_menu'].hide()
+        if self.text_focused and self.text_focused.focused:
+            self.clip_interact(self.text_focused,clip_item.text)
+            return
         for field in self.text_fields:
             fld = self.root.ids[field]
             if fld.focused:
-                if clip_item.text == "Paste":
-                    if fld.selection_text:
-                        a = fld.selection_from if fld.selection_from<fld.selection_to else fld.selection_to
-                        z = fld.selection_from if fld.selection_from>fld.selection_to else fld.selection_to 
-                        fld.text = fld.text[:a]+Clipboard.paste()+fld.text[z:]
-                    else:
-                        fld.text = fld.text[:fld.cursor_index()]+Clipboard.paste()+fld.text[fld.cursor_index():]                
+                self.clip_interact(fld,clip_item.text)
 
-                if clip_item.text == "Copy":
-                    Clipboard.copy(fld.selection_text)
 
-                if clip_item.text == "Cut":
-                    if fld.selection_text:
-                        a = fld.selection_from if fld.selection_from<fld.selection_to else fld.selection_to
-                        z = fld.selection_from if fld.selection_from>fld.selection_to else fld.selection_to 
-                        Clipboard.copy(fld.selection_text)
-                        fld.text = fld.text[:a]+fld.text[z:]
-                    else:
-                        Clipboard.copy("")
+    def clip_interact(self,fld,action):
+        if action == "Paste":
+            if fld.selection_text:
+                a = fld.selection_from if fld.selection_from<fld.selection_to else fld.selection_to
+                z = fld.selection_from if fld.selection_from>fld.selection_to else fld.selection_to 
+                fld.text = fld.text[:a]+Clipboard.paste()+fld.text[z:]
+            else:
+                fld.text = fld.text[:fld.cursor_index()]+Clipboard.paste()+fld.text[fld.cursor_index():]                
+
+        if action == "Copy":
+            Clipboard.copy(fld.selection_text)
+
+        if action == "Cut":
+            if fld.selection_text:
+                a = fld.selection_from if fld.selection_from<fld.selection_to else fld.selection_to
+                z = fld.selection_from if fld.selection_from>fld.selection_to else fld.selection_to 
+                Clipboard.copy(fld.selection_text)
+                fld.text = fld.text[:a]+fld.text[z:]
+            else:
+                Clipboard.copy("")
+
+                
     def load_configure(self):
         try:
             conf = open('conf.ini','r')
