@@ -1,0 +1,5 @@
+json_path: json/
+exclude_path: exclude.csv
+char_path: chars.csv
+bkup_csv_path: data/bkup.csv
+csv_out_path: data.csv

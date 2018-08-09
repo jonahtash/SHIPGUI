@@ -1,0 +1,2 @@
+file_path: torun/ids_pmed.txt
+kickback_path: inacessable/inacessable_pmed.txt

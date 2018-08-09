@@ -1,0 +1,3 @@
+id_file_path: torun/ids_pmed.txt
+pdf_output_dir: pdf/
+kickback_dir: inacessable/

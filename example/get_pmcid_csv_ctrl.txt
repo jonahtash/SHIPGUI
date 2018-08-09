@@ -1,0 +1,3 @@
+csv_file_path: torun/pubmed_result.csv
+pmc_path: torun/ids_pmc.txt
+nopmc_path: torun/ids_pmed.txt

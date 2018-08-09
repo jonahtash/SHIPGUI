@@ -1,0 +1,3 @@
+csv_file_path: pubmed_result.csv
+good_out_path: torun/pubmed_result.csv
+bad_out_path: inacessable/pubmed_inacessable.csv
