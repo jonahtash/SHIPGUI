@@ -491,9 +491,10 @@ def set_area(text_input):
 
 
 class PopupBox(GridLayout):
-    pass
+    potat = "potato"
 
-
+    
+    
 # Hover effects credit https://codecalamity.com/first-steps-into-gui-design-with-kivy/
 class IconHover(MDIconButton):
     def __init__(self, **kwargs):
@@ -883,11 +884,11 @@ class MainApp(App):
                 params = getargspec(func[1])[0]
                 # make func_string into menu list item and add to menu
                 if len(func_string)<110:
-                    menu_list.add_widget(OneLineListItem(text=func_string,on_touch_up=partial(self.write_to_field, tf,func_string,params)))
+                    menu_list.add_widget(OneLineListItem(text=func_string,on_touch_down=partial(self.write_to_field, tf,func_string,params)))
                 elif len(func_string)<220:
-                    menu_list.add_widget(TwoLineListItem(text=func_string,on_touch_up=partial(self.write_to_field, tf,func_string,params)))
+                    menu_list.add_widget(TwoLineListItem(text=func_string,on_touch_down=partial(self.write_to_field, tf,func_string,params)))
                 else:
-                    menu_list.add_widget(ThreeLineListItem(text=func_string,on_touch_up=partial(self.write_to_field,tf,func_string,params)))
+                    menu_list.add_widget(ThreeLineListItem(text=func_string,on_touch_down=partial(self.write_to_field,tf,func_string,params)))
 
         Clock.schedule_once(partial(self.__cont_open_menu,sv),0)
         
@@ -903,7 +904,6 @@ class MainApp(App):
     # takes func and args as array and passes them to func using *    
     def func_wrapper(self,function, args):
         ret = None
-        print(args)
         try:
             ret= function(*args)
             print(ret)
