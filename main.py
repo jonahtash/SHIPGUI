@@ -775,7 +775,7 @@ class MainApp(App):
         # close popup
         pup.dismiss()
         # if the textfield that has be written to is the control program testfield, then also load in module from file selected
-        if field.hint_text == "Program Control File Location":
+        if field.hint_text == "Select Program":
             self.root.ids['mod_spinner'].active = True
             self.toggle_btns()
             threading.Thread(target=self.set_mod, args=(field,)).start()
