@@ -15,7 +15,7 @@ from kivy.core.window import Window
 from kivy.metrics import dp
 from kivy.properties import ObjectProperty, BooleanProperty
 from kivy.uix.boxlayout import BoxLayout
-from kivy.uix.floatlayout import FloatLayout
+from kivy.uix.gridlayout import GridLayout
 from kivy.uix.popup import Popup
 from kivy.uix.textinput import TextInput
 from kivy.uix.scrollview import ScrollView
@@ -59,15 +59,68 @@ kv = '''
 #:import Clipboard kivy.core.clipboard.Clipboard
 #: import Window kivy.core.window.Window
 
+<PopupBox>
+    cols: 1
+    padding: dp(48)
+    spacing: 10
+    id: pup_box
+    BoxLayout:
+        orientation: 'horizontal'
+        spacing: 30
+        id: ctrl_select
+        height: dp(48)
+        size_hint_y: None
+        MDTextField:
+            id: cntrl_load_path
+            hint_text: "Load From Control File"
+            pos_hint:    {'center_x': 0.75, 'center_y': 0.5}
+        IconHover:
+            on_release: app.open_dialog(cntrl_load_path)
+    ScrollView:
+        pos_hint_y: 0
+        bar_width: 2.5
+        height: dp(150)
+        GridLayout:
+            id: param_grid
+            cols: 1
+            row_default_height: dp(65)
+            row_force_default: True
+            padding: dp(18)
+            size_hint_y:None
+    BoxLayout:
+        orientation: 'horizontal'
+        spacing: 30
+        height: dp(48)
+        size_hint_y: None
+        MDButtonFixed:
+            id: func_btn
+            text: "SAVE CHANGES AS"
+            opposite_colors: True
+            size_hint: None, None
+            size: 4 * dp(48), dp(48)
+            pos_hint:    {'center_x': 0, 'center_y': 0.5}
+            on_release: app.save_as_params(pup_box)
+        MDButtonFixed:
+            id: func_btn
+            text: "DONE"
+            opposite_colors: True
+            size_hint: None, None
+            size: 4 * dp(48), dp(48)
+            pos_hint: {'center_x': 1, 'center_y': 0.5}
+            on_release: app.dismiss_param(pup_box)
+
+        
+
+
 <StdoutBox@TextInput>
     height: dp(20)
     readonly: True
     
-<IconHover@MDIconButton>
+<IconHover>
     icon: 'file'
     pos_hint: {'center_x': 0.75, 'center_y': 0.5}
 
-<CtrlParamEdit@BoxLayout>
+<CtrlParamEdit>
     height: dp(48)
     size_hint_y: None
     MDLabel:
@@ -140,9 +193,9 @@ Screen:
                             id: param
                             line_width: control_py.minimum_width-dp(36)
                             pos_hint:{'center_x': 0.75, 'center_y': 0.5}
-                            hint_text: "Program Control File Location"
+                            hint_text: "Select Program"
                         IconHover:
-                            on_release: app.open_dialog(param)
+                            on_release: app.open_dialog(param,dir_path="./programs")
                         MDSpinner:
                             id: mod_spinner
                             size_hint: None, None
@@ -161,7 +214,7 @@ Screen:
                             pos_hint: {'center_x': 0.75, 'center_y': 0.5}
                         MDButtonFixed:
                             id: func_btn
-                            text: "SELECT"
+                            text: "FUNCTION"
                             opposite_colors: True
                             size_hint: None, None
                             size: 4 * dp(48), dp(48)
@@ -177,14 +230,14 @@ Screen:
                         orientation: 'horizontal'
                         spacing: 30
                         id: cntrl_select
-                        MDTextField:
-                            id: cntrl_path
-                            hint_text: "Parameter Control File Location"
-                            line_width: funcs_select.minimum_width-dp(36)
+                        MDButtonFixed:
+                            id: run_btn
+                            text: "SET PARAMETERS"
+                            opposite_colors: True
+                            size_hint: None, None
+                            size: 4 * dp(48), dp(48)
                             pos_hint:    {'center_x': 0.75, 'center_y': 0.5}
-                            text: "cntrl.txt"
-                        IconHover:
-                            on_release: app.open_dialog(cntrl_path)
+                            on_release: app.open_param_pup()
                         MDButtonFixed:
                             id: run_btn
                             text: "RUN"
@@ -192,7 +245,8 @@ Screen:
                             size_hint: None, None
                             size: 4 * dp(48), dp(48)
                             pos_hint:    {'center_x': 0.75, 'center_y': 0.5}
-                            on_release: app.run_param(cntrl_path.text,func_field)
+                            on_release: app.run_param(func_field)
+                            disabled: len(app.run_parameter_list)<1
                         MDSpinner:
                             id: func_spinner
                             size_hint: None, None
@@ -434,6 +488,12 @@ def set_area(text_input):
 
 """*********************"""
 """END UTILITY FUNCTIONS"""
+
+
+class PopupBox(GridLayout):
+    pass
+
+
 # Hover effects credit https://codecalamity.com/first-steps-into-gui-design-with-kivy/
 class IconHover(MDIconButton):
     def __init__(self, **kwargs):
@@ -536,6 +596,10 @@ class MainApp(App):
 
     text_focused = None
 
+    screen_popup = None
+
+    good_run=True
+
     # on_release event for checkbox controlling output location
     # when the check box is active (checked) std is directed to a log file whose location is given by a text field
     # if the box is not active, have std go to a TextInput at the bottom of the app
@@ -610,7 +674,6 @@ class MainApp(App):
                     try:
                         cf = open(os.path.join(folder_field.text,func[0]+"_ctrl.txt"),'w')
                         argspec= getargspec(func[1])
-                        print(getargspec(func[1]))
                         if argspec[0]:
                             for arg in argspec[0]:
                                 cf.write(arg+": \n")
@@ -688,9 +751,9 @@ class MainApp(App):
 
     # called when a button used to select a file is pressed
     # takes in a reference to a textfield that a file path will be written to on sucessful file selection
-    def open_dialog(self,textfield):
+    def open_dialog(self,textfield,dir_path="."):
         # make filebroswer open to current path
-        fb = filebrowser.FileBrowser(select_string='Select',favorites=[(user_path, 'Documents')],path=".")
+        fb = filebrowser.FileBrowser(select_string='Select',favorites=[(user_path, 'Documents')],path=dir_path)
         pu = Popup(id='file_chooser_dialog',title='File Selection',content=fb,size_hint=(None, None), size=(800, 500),auto_dismiss=False)
         # bind _success and _submit functions. On cancel call popup.dismiss (close the popup)
         fb.bind(on_success=partial(self._fbrowser_success, textfield, pu),on_canceled=pu.dismiss,on_submit=partial(self._fbrowser_submit, textfield, pu))
@@ -717,7 +780,20 @@ class MainApp(App):
             threading.Thread(target=self.set_mod, args=(field,)).start()
         if field.hint_text == self.root.ids.ctrl_edit.hint_text:
             self.create_ctrl_edit(field,self.root.ids.edit_params)
-            
+        if field.hint_text == "ctrl_location":
+            self.save_ctrl(MDTextField(text=instance.selection[0]),self.screen_popup.children[0].children[0].children[0].ids['param_grid'])
+        if field.hint_text == "Load From Control File":
+            cf = None
+            try:
+                cf = open(instance.selection[0],'r')
+                for child in self.screen_popup.children[0].children[0].children[0].ids['param_grid'].children[::-1]:
+                    line = cf.readline().strip()
+                    if line:
+                        child.children[1].text=strip_quotes(line[line.index(':')+1:].strip())
+            except Exception as e:
+                self.open_final_msg("File Error","Unable to open control file "+instance.selection[0]+"\n"+str(e))
+                return
+    
 
     # just use the success function
     def _fbrowser_submit(self, field, pup,instance):
@@ -727,10 +803,45 @@ class MainApp(App):
 
     # used to write to selected func textfield when a function name is selected from popup list
     # called on on_touch_down event
-    def write_to_field(self,a,b,tf,text):
-        a.text =b
-        tf.parent.parent.parent.parent.parent.dismiss()
-        
+
+    def dismiss_param(self,popup):
+        self.run_parameter_list=[]
+        for child in popup.children[1].children[0].children[::-1]:
+            if child.children[1].text:
+                self.run_parameter_list.append(strconv.convert(child.children[1].text))
+        if self.run_parameter_list:
+            self.root.ids['run_btn'].disabled = False
+        self.screen_popup.dismiss()
+
+    def save_as_params(self,pup_box):
+        tf= MDTextField(hint_text="ctrl_location")
+        self.open_dialog(tf)
+
+    params = []
+    run_parameter_list = []
+    def open_param_pup(self):
+        pup_box = PopupBox()
+        box = pup_box.ids['param_grid']
+        for param in self.params:
+            try:
+                param_box= CtrlParamEdit()
+                param_box.children[2].text=param
+                box.add_widget(param_box)
+            except Exception as e:
+                self.open_final_msg("File Error","Malformed control file")
+                print(str(e))
+                return
+        box.size[1] = sum([dp(65) for c in box.children])+20
+        pu = Popup(id='pup_params',title='Parameter Editor',title_color=[255, 255, 255, 1],content=pup_box,size_hint=(None, None), size=(800, 500),auto_dismiss=False,background="res/back.png",)
+        self.screen_popup = pu
+        pu.open()
+
+    def write_to_field(self,tf,txt,params,callback,touch):
+        if self.good_run:
+            self.screen_popup.dismiss()
+            self.params = params
+            tf.text=txt
+            #Dont write in this one thanks
     def open_menu_thread(self,tf):
         self.root.ids['sel_spinner'].active = True
         self.toggle_btns()
@@ -741,6 +852,7 @@ class MainApp(App):
     # opens func selection popup from list of funcs in control program module
     # called when "Select" button is pressed
     def open_menu(self,tf):
+        self.good_run = True
         # make KivyMd list
         menu_list = MDList(id = 'func_list')
         sv= ScrollView(scroll_wheel_distance=35)
@@ -768,26 +880,30 @@ class MainApp(App):
                     else:
                         func_string+= param.name+", "
                 func_string = func_string.strip()[:-1]+")"
+                params = getargspec(func[1])[0]
                 # make func_string into menu list item and add to menu
                 if len(func_string)<110:
-                    menu_list.add_widget(OneLineListItem(text=func_string,on_touch_down=partial(self.write_to_field, tf,func_string)))
+                    menu_list.add_widget(OneLineListItem(text=func_string,on_touch_up=partial(self.write_to_field, tf,func_string,params)))
                 elif len(func_string)<220:
-                    menu_list.add_widget(TwoLineListItem(text=func_string,on_touch_down=partial(self.write_to_field, tf,func_string)))
+                    menu_list.add_widget(TwoLineListItem(text=func_string,on_touch_up=partial(self.write_to_field, tf,func_string,params)))
                 else:
-                    menu_list.add_widget(ThreeLineListItem(text=func_string,on_touch_down=partial(self.write_to_field, tf,func_string)))
+                    menu_list.add_widget(ThreeLineListItem(text=func_string,on_touch_up=partial(self.write_to_field,tf,func_string,params)))
 
         Clock.schedule_once(partial(self.__cont_open_menu,sv),0)
         
     def __cont_open_menu(self,sv,ph):
         # make and open popup with list    
-        pu = Popup(id='funcs',title='Function Selector',title_color=[255, 255, 255, 1],content=sv,size_hint=(None, None), size=(800, 500),auto_dismiss=False,background="res/back.png",)
+        pu = Popup(id='funcs_menu',title='Function Selector',title_color=[255, 255, 255, 1],content=sv,size_hint=(None, None), size=(800, 500),auto_dismiss=False,on_dismiss=self.set_good_run,background="res/back.png",)
+        self.screen_popup = pu
         pu.open()
         self.root.ids['sel_spinner'].active = False
         self.toggle_btns()
-
+    def set_good_run(self,a):
+        self.good_run = False
     # takes func and args as array and passes them to func using *    
     def func_wrapper(self,function, args):
         ret = None
+        print(args)
         try:
             ret= function(*args)
             print(ret)
@@ -812,7 +928,7 @@ class MainApp(App):
 
     # cntrl_path is the file path of the txt conatining parameters to be passed
     # function_text is a reference to the MDTextField that contains function names
-    def run_param(self,cntrl_path,function_text_field):
+    def run_param(self,function_text_field):
         # func_name string that conmes before ( in the function_text_field
         func_name = function_text_field.text.split('(')[0]
         if len(func_name)<1:
@@ -837,7 +953,7 @@ class MainApp(App):
         num_params = 0
         try:
             # set the number of cntrl params to the number of params in cntrl file
-            num_params = sum(1 for line in open(cntrl_path))
+            num_params = len(self.run_parameter_list)
         except Exception as e:
             # if for any reason the control file could not be opened, display the error to the user and exit
             self.open_final_msg("File Error", "Error opening file:\n"+str(e))
@@ -849,56 +965,27 @@ class MainApp(App):
         if num_params > len(params):
             # too many
             # open dialog to give user option to continue
-            self.open_too('many',params,cntrl_path,func)
+            self.open_too('many',params,func)
     
         elif num_params < len(params):
             # too few
             # open dialog to give user option to continue
-            self.open_too('few',params,cntrl_path,func)
+            self.open_too('few',params,func)
         else:
             # just right
             # continue execution
-            self.__cont_run_param(params,cntrl_path,func)
+            self.__cont_run_param(func)
             
     # next block of run_param function
     # assumes that parameter number discrepencies have been resolved or user has chosen to ignore
-    def __cont_run_param(self,params,cntrl_path,func):
-        c = 0
-        # 2 lsits of blanks size of # of contrl params params
-        # first values given by cntrl file (thing after ':')
-        run_params = [None] * len(params)
-        # second param names in file (thing before ':')
-        run_params_names = [None] * len(params)
-        # read through control file
-        for p in open(cntrl_path,'r'):
-            if(c<len(params)):
-                # add param value to run_params
-                run_params[c] = strconv.convert(strip_quotes(p[p.index(':')+1:].strip()))
-                # add param name to run_param_names
-                run_params_names[c] = p.split(':')[0].strip()
-                c+=1
-            else:
-                break
-        # get list of difference between
-        # list of param names in cntrl function definition and param names in cntrl file
-        diffs = _get_diff(params,run_params_names)
-        if len(diffs)>0:
-            # if there are differences, display them to the user and ask if they want to continue
-            self.open_diffs(diffs,func,run_params)
-        else:
-            # no differences, then just continue
-           self.__finish_run_param(func,run_params,"Placehodler")
-        
-    # final block of run_param
-    # assumes all parameter name discrepencies have been solved
 
     @mainthread
-    def __finish_run_param(self,func,run_params,placeholder):
+    def __cont_run_param(self,func):
         Clock.schedule_once(self.toggle_loading,.25)
         try:
             # use func_wrapper to pass params to cntrl function as list
             # run the function and print the result
-            threading.Thread(target=self.func_wrapper, args=(func,run_params,)).start()
+            threading.Thread(target=self.func_wrapper, args=(func,self.run_parameter_list,)).start()
         except Exception as e:
             # if the function throws an error, output the error
             print("Function threw error:\n"+str(e))
@@ -914,37 +1001,17 @@ class MainApp(App):
 
     # called from run param
     # has user choose to continue if the # of contrl params != # params in cntrl func definition
-    def open_too(self,text,params,cntrl_path,func):
+    def open_too(self,text,params,func):
         # text either many or few, so text reads "Too (many or few) arguents"
         content = MDLabel(font_style='Body1',theme_text_color='Secondary',text="Too "+text+" arguments. Is this OK?",size_hint_y=None,valign='top')
         content.bind(texture_size=content.setter('size'))
         self.dialog = MDDialog(title="Program Error",content=content,size_hint=(.8, None),height=dp(200),auto_dismiss=False)
         # if yes call next function in run_param chain
-        self.dialog.add_action_button("YES",action=lambda *x: self.dialog.dismiss(force=True,animation=False) and self.__cont_run_param(params,cntrl_path,func))
+        self.dialog.add_action_button("YES",action=lambda *x: self.dialog.dismiss(force=True,animation=False) and self.__cont_run_param(func))
         # else end the chain
         self.dialog.add_action_button("NO",action=lambda *x: self.dialog.dismiss())
         self.dialog.open()
 
-    # called from run param
-    # displays name differnces in ctrnl params and cntrl func params
-    # has user choose to continue
-    def open_diffs(self,diffs,func,run_params):
-        # build dia_text to list two columns
-        # expected param name and param name recieved from cntrl file
-        dia_text = "Unexepcted parameter names recieved:\nEXPECTED     RECEIVED"
-        for r in diffs:
-            # formats so that the cols maintain a somewhat uniform width
-            dia_text+="\n"+"{:17}{}".format(str(r[0]),str(r[1]))
-        dia_text+="\n\nWould you like to continue?"
-        content = MDLabel(font_style='Body1',theme_text_color='Secondary',text=dia_text,size_hint_y=None,valign='top')
-        content.bind(texture_size=content.setter('size'))
-        self.dialog = MDDialog(title="Parameter Error",content=content,size_hint=(.8, None),height=dp(350),auto_dismiss=False)
-        # if finish call next function in run_param chain
-        # intermediary function used to create a .5 sec pause so that the dialog close animation has time to finish
-        self.dialog.add_action_button("YES, CONTINUE",action=lambda *x: self.__pass_run(func,run_params))
-        # else end the chain
-        self.dialog.add_action_button("NO",action=lambda *x: self.dialog.dismiss())
-        self.dialog.open()
 
     # run a given function after waiting period in seconds time
     def __schedule(self,function,time,placeholder):
@@ -1048,9 +1115,7 @@ class MainApp(App):
             val_dict = {}
             for line in conf:
                 line_split = line.strip().split('=')
-                print(line_split[0].strip())
                 val_dict[line_split[0].strip()] = line_split[1].strip()
-                print(val_dict)
             if val_dict.get('default_module'):
                 self.root.ids['param'].text = val_dict.get('default_module')
             
@@ -1060,7 +1125,8 @@ class MainApp(App):
             if val_dict.get('default_function'):
                 self.root.ids['func_field'].text=val_dict.get('default_function')
             if val_dict.get('default_control'): 
-                self.root.ids['cntrl_path'].text=val_dict.get('default_control')
+                do = "nothing"
+                #self.root.ids['cntrl_path'].text=val_dict.get('default_control')
             if val_dict.get('default_log'):
                 self.root.ids['log_path'].text=val_dict.get('default_log')
             
