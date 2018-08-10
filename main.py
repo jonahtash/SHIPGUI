@@ -59,6 +59,12 @@ kv = '''
 #:import Clipboard kivy.core.clipboard.Clipboard
 #: import Window kivy.core.window.Window
 
+<ScrollBetter>
+    bar_width: 7
+    height: dp(150)
+    scroll_type: ['bars', 'content']
+
+    
 <PopupBox>
     cols: 1
     padding: dp(48)
@@ -76,10 +82,8 @@ kv = '''
             pos_hint:    {'center_x': 0.75, 'center_y': 0.5}
         IconHover:
             on_release: app.open_dialog(cntrl_load_path)
-    ScrollView:
+    ScrollBetter:
         pos_hint_y: 0
-        bar_width: 2.5
-        height: dp(150)
         GridLayout:
             id: param_grid
             cols: 1
@@ -349,9 +353,8 @@ Screen:
                     IconHover:
                         on_release: app.open_dialog(ctrl_edit)
                         pos_hint:    {'center_x': 0.75, 'center_y': .75}
-                ScrollView:
+                ScrollBetter:
                     pos_hint_y: 0
-                    bar_width: 2.5
                     GridLayout:
                         id: edit_params
                         cols: 1
@@ -493,6 +496,8 @@ def set_area(text_input):
 class PopupBox(GridLayout):
     potat = "potato"
 
+class ScrollBetter(ScrollView):
+    potat = "potato"
     
     
 # Hover effects credit https://codecalamity.com/first-steps-into-gui-design-with-kivy/
@@ -599,7 +604,6 @@ class MainApp(App):
 
     screen_popup = None
 
-    good_run=True
 
     # on_release event for checkbox controlling output location
     # when the check box is active (checked) std is directed to a log file whose location is given by a text field
@@ -624,7 +628,7 @@ class MainApp(App):
         path_a = mod_path.text.split('\\')
         try:  
             # add path to file selected to sys.path
-            sys.path.append("\\".join(path_a[:-1]))
+            sys.path.append("\\".join(path_a[:-2]))
             # import module and it to cnrtl_mod field
             self.cnrtl_mod = importlib.import_module(path_a[-1].split('.')[0])
             # reassign list of functions to functions within new module
@@ -752,9 +756,16 @@ class MainApp(App):
 
     # called when a button used to select a file is pressed
     # takes in a reference to a textfield that a file path will be written to on sucessful file selection
-    def open_dialog(self,textfield,dir_path="."):
+    def open_dialog(self,textfield,dir_path=".",btn_text="Select"):
         # make filebroswer open to current path
-        fb = filebrowser.FileBrowser(select_string='Select',favorites=[(user_path, 'Documents')],path=dir_path)
+        fb = filebrowser.FileBrowser(favorites=[(user_path, 'Documents')],path=dir_path,select_string=btn_text)
+        fb.ids.splitter.strip_size = '3pt'
+        fb.ids.splitter.children[1].bar_width= 7
+        fb.ids.splitter.children[1].scroll_type= ['bars', 'content']
+        fb.ids.list_view.ids.layout.ids.scrollview.bar_width= 7
+        fb.ids.list_view.ids.layout.ids.scrollview.scroll_type= ['bars', 'content']
+        fb.ids.icon_view.ids.layout.ids.scrollview.scroll_type= ['bars', 'content']
+        fb.ids.icon_view.ids.layout.ids.scrollview.bar_width= 7
         pu = Popup(id='file_chooser_dialog',title='File Selection',content=fb,size_hint=(None, None), size=(800, 500),auto_dismiss=False)
         # bind _success and _submit functions. On cancel call popup.dismiss (close the popup)
         fb.bind(on_success=partial(self._fbrowser_success, textfield, pu),on_canceled=pu.dismiss,on_submit=partial(self._fbrowser_submit, textfield, pu))
@@ -771,7 +782,7 @@ class MainApp(App):
             field.text =instance.selection[0]
         else:
             # no file chosen, so path selected
-            field.text = instance.path
+            field.text = os.path.join(instance.path,instance.filename)
         # close popup
         pup.dismiss()
         # if the textfield that has be written to is the control program testfield, then also load in module from file selected
@@ -782,7 +793,7 @@ class MainApp(App):
         if field.hint_text == self.root.ids.ctrl_edit.hint_text:
             self.create_ctrl_edit(field,self.root.ids.edit_params)
         if field.hint_text == "ctrl_location":
-            self.save_ctrl(MDTextField(text=instance.selection[0]),self.screen_popup.children[0].children[0].children[0].ids['param_grid'])
+            self.save_ctrl(MDTextField(text=field.text),self.screen_popup.children[0].children[0].children[0].ids['param_grid'])
         if field.hint_text == "Load From Control File":
             cf = None
             try:
@@ -816,7 +827,7 @@ class MainApp(App):
 
     def save_as_params(self,pup_box):
         tf= MDTextField(hint_text="ctrl_location")
-        self.open_dialog(tf)
+        self.open_dialog(tf,btn_text="Save")
 
     params = []
     run_parameter_list = []
@@ -838,11 +849,11 @@ class MainApp(App):
         pu.open()
 
     def write_to_field(self,tf,txt,params,callback,touch):
-        if self.good_run:
-            self.screen_popup.dismiss()
-            self.params = params
-            tf.text=txt
-            #Dont write in this one thanks
+        self.screen_popup.dismiss()
+        self.params = params
+        tf.text=txt
+        return False
+
     def open_menu_thread(self,tf):
         self.root.ids['sel_spinner'].active = True
         self.toggle_btns()
@@ -853,10 +864,9 @@ class MainApp(App):
     # opens func selection popup from list of funcs in control program module
     # called when "Select" button is pressed
     def open_menu(self,tf):
-        self.good_run = True
         # make KivyMd list
         menu_list = MDList(id = 'func_list')
-        sv= ScrollView(scroll_wheel_distance=35)
+        sv= ScrollBetter(scroll_wheel_distance=35)
         sv.add_widget(menu_list)
         # go through funcs in control mod and add names with parameters to list
         if not self.cnrtl_mod:
@@ -894,13 +904,11 @@ class MainApp(App):
         
     def __cont_open_menu(self,sv,ph):
         # make and open popup with list    
-        pu = Popup(id='funcs_menu',title='Function Selector',title_color=[255, 255, 255, 1],content=sv,size_hint=(None, None), size=(800, 500),auto_dismiss=False,on_dismiss=self.set_good_run,background="res/back.png",)
+        pu = Popup(id='funcs_menu',title='Function Selector',title_color=[255, 255, 255, 1],content=sv,size_hint=(None, None), size=(800, 500),auto_dismiss=False,background="res/back.png",)
         self.screen_popup = pu
         pu.open()
         self.root.ids['sel_spinner'].active = False
         self.toggle_btns()
-    def set_good_run(self,a):
-        self.good_run = False
     # takes func and args as array and passes them to func using *    
     def func_wrapper(self,function, args):
         ret = None
