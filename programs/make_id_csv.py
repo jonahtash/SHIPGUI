@@ -44,7 +44,7 @@ def _remove_dupes_txt(in_path, out_path):
     for line in open(in_path, "r"):
         if line not in lines_seen:
             outfile.write(line)
-            lines_seen.
+            lines_seen.append(line)
 
 def _txt_diff(txt1,txt2,out_txt):
     t1 = open(txt1,'r').readlines()

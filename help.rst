@@ -31,7 +31,7 @@ To run a program using this user interface, the you, the user, must assign a min
 
 ``out_csv: path/to/csv/bar.csv``
 
-Notes: The inclusion of optional parameters is optional. The name of the parameter that appears before the colon does not have to match the name of a parameter in the function definition, however **ORDER MATTERS!!!** Parameters will be passed to the function in the order the appear, NOT BY PARAMETER NAME!!! (<- just want to reiterate that this is important). This user interface comes with tools to generate and maintain control files see `Maintaining Control Files`_.
+Notes: The inclusion of optional parameters is optional. The name of the parameter that appears before the colon does not have to match the name of a parameter in the function definition, however **ORDER MATTERS!!!** Parameters will be passed to the function in the order in which they appear, NOT BY PARAMETER NAME!!! (<- just want to reiterate that this is important). This user interface comes with tools to generate and maintain control files see `Maintaining Control Files`_.
 
 **You're all set!** Press the run button to run the function selected.
 

@@ -5,3 +5,4 @@ main(['install','docutils', 'pygments', 'pypiwin32', 'kivy.deps.sdl2', 'kivy.dep
 main(['install', 'kivy.deps.angle'])
 main(['install', 'kivy'])
 system("garden install filebrowser")
+system("garden install contextmenu")
