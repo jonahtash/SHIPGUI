@@ -213,17 +213,17 @@ def _process(input, searchIndex, IDIndex, db, tab):
     return curse.fetchall()
 
 def grab_table_write_table(fileIn, fileOut, abstractName, IDName): # Accepts two filepaths and two strings
-    readR = csv.reader(open(fileIn, newline = "")) # readR will be used to read fileIn row by row (make sure it is a csv)
+    readR = csv.reader(open(fileIn, newline = "",encoding='utf-8-sig')) # readR will be used to read fileIn row by row (make sure it is a csv)
     firstRow = next(readR) # make sure fileIn has headers as well
     searchIndex = firstRow.index(abstractName)
     IDIndex = firstRow.index(IDName) # use searchIndex and IDIndex as indices to search and ID respectively
     processed = _process(readR,searchIndex,IDIndex,":memory:","tab")
-    out = open(fileOut, "w", newline = "")
+    out = open(fileOut, "w", newline = "",encoding='utf-8-sig')
     writeR = csv.writer(out, quoting = csv.QUOTE_ALL)
     writeR.writerow(["Longform","Shortform","ID","Frequency","Standard Div","Average","Suspicious"])
     writeR.writerows(processed)
 
-def grab_db_write_table(dbIn, tableIn, fileOut, abstractName, IDName):
+def _grab_db_write_table(dbIn, tableIn, fileOut, abstractName, IDName):
 
     connIn = sqlite3.connect(dbIn)
     curseIn = connIn.cursor()
@@ -236,14 +236,14 @@ def grab_db_write_table(dbIn, tableIn, fileOut, abstractName, IDName):
     writeR.writerows(processed)
     connIn.close()
 
-def grab_table_write_db(fileIn, dbOut, tableOut, abstractName, IDName):
+def _grab_table_write_db(fileIn, dbOut, tableOut, abstractName, IDName):
     readR = csv.reader(open(fileIn, newline = "")) # readR will be used to read fileIn row by row (make sure it is a csv)
     firstRow = next(readR) # make sure fileIn has headers as well
     searchIndex = firstRow.index(abstractName)
     IDIndex = firstRow.index(IDName) # use searchIndex and IDIndex as indices to search and ID respectively
     _process(readR,searchIndex,IDIndex,dbOut,tableOut)
 
-def grab_db_write_db(dbIn, tableIn, dbOut, tableOut, abstractName, IDName):
+def _grab_db_write_db(dbIn, tableIn, dbOut, tableOut, abstractName, IDName):
     connIn = sqlite3.connect(dbIn)
     curseIn = connIn.cursor()
     curseIn.execute("SELECT " + abstractName + ", " + IDName + " FROM " + tableIn)
