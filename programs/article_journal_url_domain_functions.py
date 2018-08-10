@@ -19,7 +19,6 @@ import pandas as pd
 import shutil
 import xml.etree.ElementTree as ET
 
-
 #func to process urls for url domain sorting function
 #line is PubMed id
 def _sort_url_process(line):
@@ -46,24 +45,6 @@ def _sort_url_process(line):
         #if an error occurs return the domain name as "error:*the error mesage*"
         return ("error:"+str(e)+"||"+line.strip())
 
-def extract_journal_ids(csv_in,txt_ids_out,site_domain):
-    in_csv = csv.reader(open(csv_in,'r',encoding='utf-8'))
-    out=open(txt_ids_out,'w',encoding='utf-8')
-    for row in in_csv:
-        if site_domain ==row[0]:
-            out.write(row[1]+"\n")
-    out.close()
-
-def count_domain(in_csv,out_csv):
-    domains = {}
-    for row in csv.reader(open(in_csv,'r')):
-        if row[0] in domains:
-            domains[row[0]] = domains[row[0]]+1
-        else:
-            domains[row[0]] = 1
-    w = csv.writer(open(out_csv,'w'),lineterminator="\n")
-    for k in domains.keys():
-        w.writerow([k,domains[k]])
 
 def sort_url(id_txt,out_csv,num_threads=10):
     pool = Pool(num_threads)
@@ -94,3 +75,14 @@ def sort_url_mp(id_txt,out_csv,num_threads=10):
     f = csv.writer(open(out_csv,'w'),lineterminator="\n")
     for i in results:
         f.writerow(i.split("||"))
+
+def count_domain(in_csv,out_csv):
+    domains = {}
+    for row in csv.reader(open(in_csv,'r')):
+        if row[0] in domains:
+            domains[row[0]] = domains[row[0]]+1
+        else:
+            domains[row[0]] = 1
+    w = csv.writer(open(out_csv,'w'),lineterminator="\n")
+    for k in domains.keys():
+        w.writerow([k,domains[k]])

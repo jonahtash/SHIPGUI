@@ -77,3 +77,11 @@ def get_abstracts(txt_ids_in,csv_abstracts_out,num_threads=10):
         abst_index = i.index("$%$%")
         csvf.writerow([i[:id_index],i[id_index+2:title_index],i[title_index+4:abst_index],i[abst_index+4:]])
 
+
+def extract_journal_ids(csv_in,txt_ids_out,site_domain):
+    in_csv = csv.reader(open(csv_in,'r',encoding='utf-8'))
+    out=open(txt_ids_out,'w',encoding='utf-8')
+    for row in in_csv:
+        if site_domain ==row[0]:
+            out.write(row[1]+"\n")
+    out.close()
